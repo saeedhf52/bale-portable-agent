@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مدیریت اتوماسیون‌های بله و CDP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🤖 عامل محلی و اتوماسیون CDP بله</h1>
+      <div id="status-badge" class="badge badge-checking">در حال بررسی ارتباط...</div>
+    </header>
+
+    <div class="main-layout">
+      <!-- Sidebar / List of Automations -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h2>فهرست اتوماسیون‌ها</h2>
+          <button id="btn-new" class="btn btn-sm btn-primary">+ جدید</button>
+        </div>
+        <ul id="automation-list" class="automation-list"></ul>
+      </aside>
+
+      <!-- Content Area / Editor & Log -->
+      <main class="content">
+        <section class="card">
+          <div class="card-header">
+            <h2 id="editor-title">تعریف اتوماسیون جدید</h2>
+            <div class="actions">
+              <button id="btn-run" class="btn btn-success">▶ اجرای اتوماسیون</button>
+              <button id="btn-save" class="btn btn-primary">💾 ذخیره</button>
+              <button id="btn-delete" class="btn btn-danger" style="display:none;">🗑 حذف</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <input type="hidden" id="auto-id">
+            <div class="form-group">
+              <label for="auto-name">عنوان اتوماسیون:</label>
+              <input type="text" id="auto-name" class="form-control" placeholder="نام اتوماسیون را وارد کنید...">
+            </div>
+            <div class="form-group">
+              <label for="auto-desc">توضیحات:</label>
+              <input type="text" id="auto-desc" class="form-control" placeholder="توضیحات مختصر...">
+            </div>
+            <div class="form-group">
+              <label for="auto-steps">تعریف گام‌ها (ساختار JSON):</label>
+              <textarea id="auto-steps" class="form-control code-editor" rows="12"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <!-- Log Section -->
+        <section class="card margin-top">
+          <div class="card-header">
+            <h2>📜 لاگ و گزارش‌های اجرا</h2>
+            <button id="btn-refresh-logs" class="btn btn-sm">بروزرسانی لاگ‌ها</button>
+          </div>
+          <div class="card-body">
+            <div id="logs-container" class="logs-container"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

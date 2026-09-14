@@ -10,6 +10,7 @@ DEPENDENCIES.json
 # Export output & profiles
 /output/
 /BrowserProfile/
+agent.db
 *.log
 *.zip
 

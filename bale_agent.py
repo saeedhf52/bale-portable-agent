@@ -389,6 +389,7 @@ def main(argv=None):
     run.add_argument("--target-id")
     run.add_argument("--timeout", type=float, default=20)
     run.add_argument("--output", default=str(ROOT / "output"))
+    gui = sub.add_parser("gui", help="Start the Web GUI automation interface")
     args = parser.parse_args(argv)
     if getattr(args, "count", 1) < 1 or getattr(args, "count", 1) > 10000:
         parser.error("--count must be between 1 and 10000")
@@ -397,6 +398,10 @@ def main(argv=None):
     try:
         if args.command == "launch":
             launch_browser(args)
+            return 0
+        if args.command == "gui":
+            import web_gui
+            web_gui.main()
             return 0
         return export(args)
     except KeyboardInterrupt:
