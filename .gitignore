@@ -11,6 +11,7 @@ DEPENDENCIES.json
 /output/
 /BrowserProfile/
 *.log
+*.zip
 
 # IDE & OS
 .vscode/
