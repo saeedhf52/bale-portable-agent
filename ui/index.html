@@ -28,6 +28,12 @@
           <span class="subtitle">CDP Portable Web Agent</span>
         </div>
       </div>
+      <div class="topbar-center">
+        <nav class="nav-tabs">
+          <button id="nav-editor" class="nav-btn active">⚡ اتوماسیون‌ها</button>
+          <button id="nav-viewer" class="nav-btn">📂 مشاهده و تحلیل داده‌ها</button>
+        </nav>
+      </div>
       <div class="topbar-left">
         <div id="status-badge" class="badge badge-checking">
           <span class="pulse"></span> بررسی اتصال...
@@ -35,7 +41,8 @@
       </div>
     </header>
 
-    <div class="layout">
+    <!-- Page 1: Automation Editor -->
+    <div id="page-editor" class="layout">
       <!-- Sidebar -->
       <aside class="sidebar">
         <div class="sidebar-section">
@@ -151,11 +158,68 @@
         <!-- Logs -->
         <section class="card card-logs">
           <div class="card-top">
-            <h2>📜 تاریخچه</h2>
+            <h2>📜 تاریخچه اجرا</h2>
             <button id="btn-refresh-logs" class="btn btn-ghost btn-sm">🔄</button>
           </div>
           <div id="logs-container" class="logs-container">
             <p class="empty-state">هنوز اجرایی ثبت نشده است.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Page 2: Data Viewer & Post-Processing -->
+    <div id="page-viewer" class="layout" style="display:none">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-header">
+            <h2>فایل‌های خروجی</h2>
+            <button id="btn-refresh-files" class="btn btn-ghost btn-sm">🔄</button>
+          </div>
+          <ul id="files-list" class="auto-list"></ul>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="card">
+          <div class="card-top">
+            <h2 id="viewer-filename">یک فایل را از لیست انتخاب کنید</h2>
+            <div class="toolbar">
+              <button id="btn-convert-csv" class="btn btn-accent btn-sm" style="display:none">📊 تبدیل به CSV</button>
+              <button id="btn-delete-file" class="btn btn-danger btn-sm" style="display:none">🗑 حذف فایل</button>
+            </div>
+          </div>
+
+          <!-- Filter Bar (for JSON dataset) -->
+          <div id="filter-bar" class="filter-bar" style="display:none">
+            <input type="text" id="filter-query" class="input" placeholder="🔍 جستجو در متن / مخاطب...">
+            <select id="filter-direction" class="input" style="width:140px">
+              <option value="">همه جهت‌ها</option>
+              <option value="incoming">دریافتی</option>
+              <option value="outgoing">ارسالی</option>
+            </select>
+            <select id="filter-kind" class="input" style="width:140px">
+              <option value="">همه انواع</option>
+              <option value="text">متنی</option>
+              <option value="image">تصویر</option>
+              <option value="audio">صدا</option>
+              <option value="video">ویدیو</option>
+              <option value="file">فایل</option>
+            </select>
+            <button id="btn-apply-filter" class="btn btn-primary btn-sm">فیلتر</button>
+          </div>
+
+          <!-- Data Stats Cards -->
+          <div id="stats-panel" class="stats-panel" style="display:none">
+            <div class="stat-card"><span class="stat-num" id="stat-total">0</span><span class="stat-label">کل پیام‌ها</span></div>
+            <div class="stat-card"><span class="stat-num" id="stat-filtered">0</span><span class="stat-label">نتیجه فیلتر</span></div>
+            <div class="stat-card"><span class="stat-num" id="stat-incoming">0</span><span class="stat-label">دریافتی</span></div>
+            <div class="stat-card"><span class="stat-num" id="stat-outgoing">0</span><span class="stat-label">ارسالی</span></div>
+          </div>
+
+          <!-- Content Preview Area -->
+          <div id="viewer-content" class="viewer-content">
+            <p class="empty-state">جهت پیش‌نمایش، فایلی را از منوی راست انتخاب کنید.</p>
           </div>
         </section>
       </main>
@@ -199,10 +263,10 @@
             <tbody>
               <tr><td><code>extract_text</code></td><td><code>selector</code>, <code>attribute</code>, <code>store_as</code></td><td>استخراج متن یک عنصر</td></tr>
               <tr><td><code>extract_list</code></td><td><code>selector</code>, <code>attribute</code>, <code>store_as</code></td><td>استخراج لیست از چند عنصر</td></tr>
-              <tr><td><code>crawl_links</code></td><td><code>selector</code>, <code>store_as</code></td><td>جمع‌آوری لینک‌های صفحه</td></tr>
+              <tr><td><code>crawl_links</code></td><td><code>selector</code>,  store_as</td><td>جمع‌آوری لینک‌های صفحه</td></tr>
               <tr><td><code>scroll</code></td><td><code>selector</code>, <code>direction</code>, <code>amount</code></td><td>اسکرول صفحه یا عنصر</td></tr>
-              <tr><td><code>scroll_to_bottom</code></td><td><code>selector</code>, <code>max_scrolls</code>, <code>wait</code></td><td>پیمایش کامل تا انتها (لیست‌های نامحدود)</td></tr>
-              <tr><td><code>screenshot</code></td><td>—</td><td>ذخیره اسکرین‌شات در پوشه output</td></tr>
+              <tr><td><code>scroll_to_bottom</code></td><td><code>selector</code>, <code>max_scrolls</code>, <code>wait</code></td><td>پیمایش کامل تا انتها</td></tr>
+              <tr><td><code>screenshot</code></td><td>—</td><td>ذخیره اسکرین‌شات</td></tr>
             </tbody>
           </table>
 
@@ -213,25 +277,9 @@
               <tr><td><code>set_variable</code></td><td><code>key</code>, <code>value</code></td><td>تعریف متغیر (قابل استفاده با <code>{{key}}</code>)</td></tr>
               <tr><td><code>evaluate_js</code></td><td><code>code</code>, <code>store_as</code></td><td>اجرای JavaScript و ذخیره نتیجه</td></tr>
               <tr><td><code>loop</code></td><td><code>count</code>, <code>steps</code></td><td>تکرار زیرگام‌ها (متغیر <code>{{loop_index}}</code>)</td></tr>
-              <tr><td><code>conditional</code></td><td><code>selector</code>, <code>then_steps</code>, <code>else_steps</code></td><td>اجرای شرطی بر اساس وجود عنصر</td></tr>
+              <tr><td><code>conditional</code></td><td><code>selector</code>, <code>then_steps</code>, <code>else_steps</code></td><td>اجرای شرطی</td></tr>
             </tbody>
           </table>
-
-          <h3>متغیرهای داینامیک</h3>
-          <p>با <code>set_variable</code> متغیر تعریف کنید. سپس در فیلد <code>text</code> از <code>{{نام_متغیر}}</code> استفاده کنید. مثال:</p>
-          <pre>[
-  {"action": "set_variable", "key": "user", "value": "admin"},
-  {"action": "type", "selector": "#login", "text": "{{user}}"}
-]</pre>
-
-          <h3>سلکتور CSS</h3>
-          <ul>
-            <li><code>#myId</code> — شناسه</li>
-            <li><code>.myClass</code> — کلاس</li>
-            <li><code>input[name="email"]</code> — ویژگی</li>
-            <li><code>button[type="submit"]</code> — دکمه ارسال</li>
-            <li><code>table tr:nth-child(2)</code> — ردیف دوم جدول</li>
-          </ul>
         </div>
       </div>
     </div>

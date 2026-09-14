@@ -21,6 +21,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const jsonMode = $('json-mode');
   const helpModal = $('help-modal');
 
+  // Navigation Tabs
+  const navEditor = $('nav-editor');
+  const navViewer = $('nav-viewer');
+  const pageEditor = $('page-editor');
+  const pageViewer = $('page-viewer');
+
+  navEditor.onclick = () => {
+    navEditor.classList.add('active'); navViewer.classList.remove('active');
+    pageEditor.style.display = ''; pageViewer.style.display = 'none';
+  };
+  navViewer.onclick = () => {
+    navViewer.classList.add('active'); navEditor.classList.remove('active');
+    pageViewer.style.display = ''; pageEditor.style.display = 'none';
+    loadOutputFiles();
+  };
+
   // ─── Step Definitions ───
   const STEP_DEFS = {
     navigate:         { label:'🌐 هدایت به URL',      fields:[{key:'url',label:'آدرس URL',ph:'https://example.com'},{key:'wait',label:'انتظار (ث)',ph:'2',type:'number'}] },
@@ -47,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentSteps = [];
   let isVisual = true;
+  let selectedFileName = '';
 
   // ─── Status ───
   async function checkStatus() {
@@ -83,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function markActive(list, activeLi) {
     list.querySelectorAll('li').forEach(l => l.classList.remove('active'));
     activeLi.classList.add('active');
-    // Clear active in the other list
     const other = list === autoList ? templateList : autoList;
     other.querySelectorAll('li').forEach(l => l.classList.remove('active'));
   }
@@ -166,7 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
       stepsList.appendChild(card);
     });
 
-    // Bind inputs
     stepsList.querySelectorAll('input, textarea').forEach(el => {
       el.addEventListener('input', () => {
         const idx = parseInt(el.dataset.step);
@@ -177,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Bind actions
     stepsList.querySelectorAll('[data-remove]').forEach(btn => {
       btn.onclick = () => { currentSteps.splice(parseInt(btn.dataset.remove), 1); renderVisualSteps(); syncJsonFromVisual(); };
     });
@@ -287,6 +301,144 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {}
   }
   $('btn-refresh-logs').onclick = loadLogs;
+
+  // ─── Data Viewer Page ───
+  async function loadOutputFiles() {
+    try {
+      const files = await (await fetch('/api/outputs')).json();
+      const filesList = $('files-list');
+      filesList.innerHTML = '';
+      if (!files.length) {
+        filesList.innerHTML = '<p class="empty-state">فایلی در output یافت نشد.</p>';
+        return;
+      }
+      files.forEach(f => {
+        const li = document.createElement('li');
+        const icon = f.ext === '.json' ? '📄' : f.ext === '.png' ? '🖼️' : f.ext === '.csv' ? '📊' : '📝';
+        li.innerHTML = `<span class="dot"></span>${icon} ${f.name} <small style="color:var(--text-secondary);margin-right:auto">(${f.size_human})</small>`;
+        li.onclick = () => {
+          filesList.querySelectorAll('li').forEach(l => l.classList.remove('active'));
+          li.classList.add('active');
+          previewFile(f.name);
+        };
+        filesList.appendChild(li);
+      });
+    } catch {}
+  }
+  $('btn-refresh-files').onclick = loadOutputFiles;
+
+  async function previewFile(fname) {
+    selectedFileName = fname;
+    $('viewer-filename').textContent = fname;
+    $('btn-delete-file').style.display = 'inline-flex';
+    const isJson = fname.endsWith('.json');
+    $('btn-convert-csv').style.display = isJson ? 'inline-flex' : 'none';
+    $('filter-bar').style.display = isJson ? 'flex' : 'none';
+    $('stats-panel').style.display = isJson ? 'grid' : 'none';
+
+    try {
+      const file = await (await fetch(`/api/outputs?name=${encodeURIComponent(fname)}`)).json();
+      const container = $('viewer-content');
+      container.innerHTML = '';
+
+      if (file.type === 'image') {
+        container.innerHTML = `<img src="${file.content}" alt="${fname}">`;
+      } else if (isJson) {
+        // Load with initial filter to render cards
+        applyDataFilter();
+      } else {
+        container.innerHTML = `<pre>${escapeHtml(file.content)}</pre>`;
+      }
+    } catch {
+      toast('خطا در بارگذاری فایل.', 'error');
+    }
+  }
+
+  async function applyDataFilter() {
+    if (!selectedFileName) return;
+    const q = $('filter-query').value;
+    const direction = $('filter-direction').value;
+    const kind = $('filter-kind').value;
+
+    try {
+      const url = `/api/outputs/filter?name=${encodeURIComponent(selectedFileName)}&q=${encodeURIComponent(q)}&direction=${direction}&kind=${kind}`;
+      const data = await (await fetch(url)).json();
+
+      // Stats
+      $('stat-total').textContent = data.stats.total;
+      $('stat-filtered').textContent = data.stats.filtered_count;
+      $('stat-incoming').textContent = data.stats.incoming_count;
+      $('stat-outgoing').textContent = data.stats.outgoing_count;
+
+      // Render cards
+      const container = $('viewer-content');
+      container.innerHTML = '';
+      if (!data.results.length) {
+        container.innerHTML = '<p class="empty-state">موردی یافت نشد.</p>';
+        return;
+      }
+      data.results.forEach((msg, i) => {
+        const card = document.createElement('div');
+        card.className = 'msg-card';
+        const tag = msg.direction === 'incoming'
+          ? '<span class="msg-tag tag-in">دریافتی</span>'
+          : '<span class="msg-tag tag-out">ارسالی</span>';
+        card.innerHTML = `
+          <div class="msg-header">
+            <span class="msg-contact">${tag} ${escapeHtml(msg.contact || 'مخاطب')}</span>
+            <span>${msg.jalali_date || ''} ${msg.time || ''}</span>
+          </div>
+          <div class="msg-text">${escapeHtml(msg.text || msg.media_details || '[بدون متن]')}</div>
+        `;
+        container.appendChild(card);
+      });
+    } catch {}
+  }
+
+  $('btn-apply-filter').onclick = applyDataFilter;
+  $('filter-query').onkeyup = (e) => { if (e.key === 'Enter') applyDataFilter(); };
+
+  // Convert to CSV
+  $('btn-convert-csv').onclick = async () => {
+    if (!selectedFileName) return;
+    try {
+      const res = await fetch('/api/outputs/to_csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedFileName })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast(`به CSV تبدیل شد: ${data.csv_name}`, 'success');
+        loadOutputFiles();
+      } else {
+        toast(data.error, 'error');
+      }
+    } catch {
+      toast('خطا در تبدیل.', 'error');
+    }
+  };
+
+  // Delete file
+  $('btn-delete-file').onclick = async () => {
+    if (!selectedFileName || !confirm(`آیا از حذف ${selectedFileName} اطمینان دارید؟`)) return;
+    try {
+      await fetch(`/api/outputs?name=${encodeURIComponent(selectedFileName)}`, { method: 'DELETE' });
+      toast('فایل حذف شد.', 'error');
+      selectedFileName = '';
+      $('viewer-filename').textContent = 'یک فایل را از لیست انتخاب کنید';
+      $('viewer-content').innerHTML = '<p class="empty-state">جهت پیش‌نمایش، فایلی را از منوی راست انتخاب کنید.</p>';
+      $('btn-delete-file').style.display = 'none';
+      $('btn-convert-csv').style.display = 'none';
+      $('filter-bar').style.display = 'none';
+      $('stats-panel').style.display = 'none';
+      loadOutputFiles();
+    } catch {}
+  };
+
+  function escapeHtml(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
 
   // ─── Help ───
   $('btn-help').onclick = () => { helpModal.style.display='flex'; };

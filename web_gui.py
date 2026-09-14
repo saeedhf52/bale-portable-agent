@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 import automation_db as db
 import automation_engine as engine
+import data_processor as dp
 from bale_agent import probe_endpoint
 
 UI_DIR = ROOT / "ui"
@@ -36,7 +37,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
 
     MIME = {".html": "text/html", ".css": "text/css", ".js": "application/javascript",
             ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
-            ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf"}
+            ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".csv": "text/csv"}
 
     def _send_file(self, file_path: Path):
         if not file_path.is_file():
@@ -76,6 +77,26 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             self._send_json(tpls)
         elif path == "/api/logs":
             self._send_json(db.list_logs())
+
+        # ── Output Data APIs ──
+        elif path == "/api/outputs":
+            if "name" in query:
+                try:
+                    self._send_json(dp.read_output_file(query["name"][0]))
+                except Exception as e:
+                    self._send_json({"error": str(e)}, code=404)
+            else:
+                self._send_json(dp.list_output_files())
+        elif path == "/api/outputs/filter":
+            fname = query.get("name", [""])[0]
+            q = query.get("q", [""])[0]
+            direction = query.get("direction", [""])[0]
+            kind = query.get("kind", [""])[0]
+            try:
+                self._send_json(dp.filter_data(fname, q, direction, kind))
+            except Exception as e:
+                self._send_json({"error": str(e)}, code=400)
+
         elif path == "/" or path == "/index.html":
             self._send_file(UI_DIR / "index.html")
         else:
@@ -119,17 +140,34 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 db.add_log(auto_id, "خطا", str(exc))
                 self._send_json({"success": False, "error": str(exc)}, code=500)
+
+        elif path == "/api/outputs/to_csv":
+            fname = body.get("name")
+            try:
+                csv_name = dp.json_to_csv(fname)
+                self._send_json({"success": True, "csv_name": csv_name})
+            except Exception as exc:
+                self._send_json({"success": False, "error": str(exc)}, code=400)
         else:
             self.send_error(404, "Not Found")
 
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query)
         if parsed.path == "/api/automations":
-            query = urllib.parse.parse_qs(parsed.query)
             if "id" in query:
                 db.delete_automation(int(query["id"][0]))
                 self._send_json({"success": True})
                 return
+        elif parsed.path == "/api/outputs":
+            if "name" in query:
+                try:
+                    dp.delete_output_file(query["name"][0])
+                    self._send_json({"success": True})
+                    return
+                except Exception as e:
+                    self._send_json({"error": str(e)}, code=400)
+                    return
         self.send_error(400, "Bad Request")
 
 
