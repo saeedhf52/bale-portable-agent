@@ -3,65 +3,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مدیریت اتوماسیون‌های بله و CDP</title>
+  <title>عامل اتوماسیون CDP بله</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <h1>🤖 عامل محلی و اتوماسیون CDP بله</h1>
-      <div id="status-badge" class="badge badge-checking">در حال بررسی ارتباط...</div>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-right">
+        <span class="logo">🤖</span>
+        <h1>عامل اتوماسیون بله</h1>
+      </div>
+      <div class="topbar-left">
+        <div id="status-badge" class="badge badge-checking">
+          <span class="pulse"></span> در حال بررسی...
+        </div>
+      </div>
     </header>
 
-    <div class="main-layout">
-      <!-- Sidebar / List of Automations -->
+    <div class="layout">
+      <!-- Sidebar -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <h2>فهرست اتوماسیون‌ها</h2>
-          <button id="btn-new" class="btn btn-sm btn-primary">+ جدید</button>
+          <h2>اتوماسیون‌ها</h2>
+          <button id="btn-new" class="btn btn-accent btn-sm" title="ایجاد اتوماسیون جدید">
+            <span class="icon">+</span> جدید
+          </button>
         </div>
-        <ul id="automation-list" class="automation-list"></ul>
+        <ul id="automation-list" class="auto-list"></ul>
+        <div class="sidebar-footer">
+          <button id="btn-help" class="btn btn-ghost btn-sm">📖 راهنمای سریع</button>
+        </div>
       </aside>
 
-      <!-- Content Area / Editor & Log -->
-      <main class="content">
-        <section class="card">
-          <div class="card-header">
-            <h2 id="editor-title">تعریف اتوماسیون جدید</h2>
-            <div class="actions">
-              <button id="btn-run" class="btn btn-success">▶ اجرای اتوماسیون</button>
-              <button id="btn-save" class="btn btn-primary">💾 ذخیره</button>
-              <button id="btn-delete" class="btn btn-danger" style="display:none;">🗑 حذف</button>
+      <!-- Main Content -->
+      <main class="main">
+        <!-- Editor Card -->
+        <section class="card card-editor">
+          <div class="card-top">
+            <h2 id="editor-title">اتوماسیون جدید</h2>
+            <div class="toolbar">
+              <button id="btn-run" class="btn btn-success" title="اجرای اتوماسیون">
+                <span class="icon">▶</span> اجرا
+              </button>
+              <button id="btn-save" class="btn btn-primary" title="ذخیره اتوماسیون">
+                <span class="icon">💾</span> ذخیره
+              </button>
+              <button id="btn-delete" class="btn btn-danger" style="display:none" title="حذف اتوماسیون">
+                <span class="icon">🗑</span> حذف
+              </button>
             </div>
           </div>
-          <div class="card-body">
-            <input type="hidden" id="auto-id">
-            <div class="form-group">
-              <label for="auto-name">عنوان اتوماسیون:</label>
-              <input type="text" id="auto-name" class="form-control" placeholder="نام اتوماسیون را وارد کنید...">
+
+          <input type="hidden" id="auto-id">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="auto-name">عنوان</label>
+              <input type="text" id="auto-name" class="input" placeholder="مثلاً: لاگین در سامانه اداری">
             </div>
-            <div class="form-group">
-              <label for="auto-desc">توضیحات:</label>
-              <input type="text" id="auto-desc" class="form-control" placeholder="توضیحات مختصر...">
+            <div class="form-group flex-3">
+              <label for="auto-desc">توضیحات</label>
+              <input type="text" id="auto-desc" class="input" placeholder="توضیح مختصر درباره عملکرد این اتوماسیون">
             </div>
-            <div class="form-group">
-              <label for="auto-steps">تعریف گام‌ها (ساختار JSON):</label>
-              <textarea id="auto-steps" class="form-control code-editor" rows="12"></textarea>
+          </div>
+
+          <!-- Visual Step Builder -->
+          <div class="steps-section">
+            <div class="steps-header">
+              <h3>گام‌های اتوماسیون</h3>
+              <div class="steps-tabs">
+                <button id="tab-visual" class="tab-btn active">ویزارد بصری</button>
+                <button id="tab-json" class="tab-btn">ویرایش JSON</button>
+              </div>
+            </div>
+
+            <!-- Visual Mode -->
+            <div id="visual-mode" class="steps-body">
+              <div id="steps-list" class="steps-list"></div>
+              <div class="add-step-bar">
+                <span class="label">افزودن گام:</span>
+                <button class="chip" data-action="navigate">🌐 هدایت به URL</button>
+                <button class="chip" data-action="click">👆 کلیک</button>
+                <button class="chip" data-action="type">⌨️ تایپ متن</button>
+                <button class="chip" data-action="wait">⏱️ انتظار زمانی</button>
+                <button class="chip" data-action="wait_for_element">🔍 انتظار عنصر</button>
+                <button class="chip" data-action="evaluate_js">📜 اجرای JS</button>
+                <button class="chip" data-action="bale_export">📨 استخراج بله</button>
+              </div>
+            </div>
+
+            <!-- JSON Mode -->
+            <div id="json-mode" class="steps-body" style="display:none">
+              <textarea id="auto-steps" class="input code-editor" rows="14" placeholder='[{"action":"navigate","url":"https://..."}]'></textarea>
             </div>
           </div>
         </section>
 
-        <!-- Log Section -->
-        <section class="card margin-top">
-          <div class="card-header">
-            <h2>📜 لاگ و گزارش‌های اجرا</h2>
-            <button id="btn-refresh-logs" class="btn btn-sm">بروزرسانی لاگ‌ها</button>
+        <!-- Execution Results -->
+        <section id="results-card" class="card card-results" style="display:none">
+          <div class="card-top">
+            <h2>نتیجه اجرا</h2>
+            <button id="btn-close-results" class="btn btn-ghost btn-sm">✕ بستن</button>
           </div>
-          <div class="card-body">
-            <div id="logs-container" class="logs-container"></div>
+          <div id="results-container" class="results-container"></div>
+        </section>
+
+        <!-- Log Card -->
+        <section class="card card-logs">
+          <div class="card-top">
+            <h2>📜 تاریخچه اجرا</h2>
+            <button id="btn-refresh-logs" class="btn btn-ghost btn-sm">🔄 بروزرسانی</button>
+          </div>
+          <div id="logs-container" class="logs-container">
+            <p class="empty-state">هنوز اجرایی ثبت نشده است.</p>
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal" style="display:none">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>📖 راهنمای سریع</h2>
+          <button id="btn-close-help" class="btn btn-ghost">✕</button>
+        </div>
+        <div class="modal-body">
+          <h3>عملیات‌های قابل تعریف</h3>
+          <table class="help-table">
+            <thead>
+              <tr><th>عملیات</th><th>پارامترها</th><th>کاربرد</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>navigate</code></td><td><code>url</code>, <code>wait</code></td><td>رفتن به آدرس وب (مثلاً صفحه ورود)</td></tr>
+              <tr><td><code>click</code></td><td><code>selector</code>, <code>wait</code></td><td>کلیک روی دکمه یا لینک با سلکتور CSS</td></tr>
+              <tr><td><code>type</code></td><td><code>selector</code>, <code>text</code></td><td>وارد کردن نام کاربری، رمز، یا هر متن</td></tr>
+              <tr><td><code>wait</code></td><td><code>seconds</code></td><td>توقف به مدت مشخص (برای بارگذاری صفحه)</td></tr>
+              <tr><td><code>wait_for_element</code></td><td><code>selector</code>, <code>timeout</code></td><td>صبر تا ظاهرشدن عنصر خاص در صفحه</td></tr>
+              <tr><td><code>evaluate_js</code></td><td><code>code</code></td><td>اجرای کد JavaScript دلخواه در صفحه</td></tr>
+              <tr><td><code>bale_export</code></td><td><code>count</code>, <code>timeout</code></td><td>استخراج آخرین پیام‌های شخصی بله</td></tr>
+            </tbody>
+          </table>
+          <h3>سلکتور CSS چیست؟</h3>
+          <p>سلکتور CSS آدرس یک عنصر HTML در صفحه وب است. مثال‌ها:</p>
+          <ul>
+            <li><code>#username</code> → عنصر با شناسه username</li>
+            <li><code>.login-btn</code> → عنصر با کلاس login-btn</li>
+            <li><code>input[type="password"]</code> → فیلد رمز عبور</li>
+            <li><code>button[type="submit"]</code> → دکمه ارسال فرم</li>
+          </ul>
+          <h3>نمونه اتوماسیون: لاگین در یک سامانه</h3>
+          <pre>[
+  {"action": "navigate", "url": "https://example.com/login", "wait": 2},
+  {"action": "type", "selector": "#username", "text": "admin"},
+  {"action": "type", "selector": "#password", "text": "mypass123"},
+  {"action": "click", "selector": "button[type=submit]", "wait": 3},
+  {"action": "wait_for_element", "selector": ".dashboard", "timeout": 10}
+]</pre>
+        </div>
+      </div>
     </div>
   </div>
   <script src="app.js"></script>
