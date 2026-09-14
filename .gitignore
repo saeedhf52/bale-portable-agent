@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Portable runtime & vendor (generated via build_portable.py)
+/runtime/
+/vendor/
+DEPENDENCIES.json
+
+# Export output & profiles
+/output/
+/BrowserProfile/
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
