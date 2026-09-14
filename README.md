@@ -1,126 +1,131 @@
-# Bale Portable Agent (عامل محلی و قابل‌حمل بله)
+# Portable Web Agent — عامل اتوماسیون وب
 
-عامل محلی، آفلاین و قابل‌حمل برای **اتوماسیون مرورگر** و **استخراج پیام** از نسخه وب پیام‌رسان [بله](https://web.bale.ai) از طریق پروتکل CDP (Chrome DevTools Protocol).
+ابزار آفلاین و قابل‌حمل برای **اتوماسیون مرورگر** از طریق پروتکل CDP (Chrome DevTools Protocol) با رابط گرافیکی فارسی.
 
-[English Summary](#english-summary) | [راهنمای فارسی وب بله](README.fa.md)
+[English Summary](#english-summary) | [مستندات استخراج بله](README.fa.md)
 
 ---
 
-## ✨ ویژگی‌های کلیدی
+## ✨ ویژگی‌ها
 
-- **کاملاً آفلاین و قابل‌حمل:** بدون نیاز به نصب پایتون، `pip`، درایور مرورگر (Selenium/Playwright)، یا دسترسی ادمین.
-- **اجرا روی سیستم‌های سازمانی (Active Directory):** بدون تغییر در ریجستری یا نیاز به سطح دسترسی بالا.
-- **رابط کاربری وب فارسی (RTL):** مدیریت بصری اتوماسیون‌ها با ویزارد گام‌به‌گام.
-- **موتور اتوماسیون CDP پارامتریک:** تعریف اتوماسیون‌های متنوع با ساختار JSON.
-- **دیتابیس محلی SQLite:** ذخیره اتوماسیون‌ها، تنظیمات و لاگ‌های اجرا.
-- **استخراج پیام بله:** خوانش آخرین پیام از گفت‌وگوهای شخصی اخیر با خروجی TXT (تقویم شمسی) و JSON.
+- **آفلاین و قابل‌حمل:** بدون نیاز به نصب پایتون، `pip`، درایور مرورگر یا دسترسی ادمین
+- **سازگار با Active Directory:** اجرا روی سیستم‌های سازمانی بدون تغییر ریجستری
+- **رابط گرافیکی فارسی (RTL):** ویزارد بصری ساخت اتوماسیون با فونت وزیرمتن
+- **۲۰+ عملیات CDP:** ناوبری، کلیک، تایپ هوشمند، اسکرول، استخراج، کراول و...
+- **قالب‌های آماده:** لاگین عمومی، لاگین با کپچا، کراول لینک‌ها، پیمایش لیست، پر کردن فرم داینامیک
+- **انتظار دخالت کاربر:** توقف خودکار هنگام برخورد با کپچا یا تأیید دو مرحله‌ای
+- **متغیرهای داینامیک:** تعریف و استفاده از متغیرها با `{{نام}}` در فیلدهای متنی
+- **حلقه و شرط:** تکرار گام‌ها و اجرای شرطی بر اساس وجود عنصر
+- **دیتابیس محلی SQLite:** ذخیره اتوماسیون‌ها و لاگ‌ها
+- **استخراج پیام بله:** خوانش آخرین پیام از گفت‌وگوهای شخصی با خروجی TXT/JSON
 
 ---
 
 ## 🚀 شروع سریع
 
-### ۱. استخراج و آماده‌سازی
-فایل ZIP را کاملاً از حالت فشرده خارج کنید. برای ساختن بسته قابل‌حمل:
 ```bat
-make.cmd
+start-browser.cmd        :: راه‌اندازی مرورگر با پورت CDP
+start-gui.cmd            :: رابط گرافیکی در http://127.0.0.1:8080
+export-10.cmd            :: استخراج سریع ۱۰ پیام بله
+make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 ```
-
-### ۲. راه‌اندازی مرورگر
-```bat
-start-browser.cmd
-```
-یک پنجره Chrome/Edge با پروفایل اختصاصی و پورت اشکال‌زدایی محلی (`127.0.0.1:9222`) باز می‌شود.
-
-### ۳. ورود به بله
-در پنجره مرورگر بازشده، به‌صورت دستی وارد حساب بله شوید.
-
-### ۴. استخراج سریع (بدون رابط گرافیکی)
-```bat
-export-10.cmd
-```
-
-### ۵. رابط گرافیکی اتوماسیون
-```bat
-start-gui.cmd
-```
-رابط کاربری وب فارسی در آدرس `http://127.0.0.1:8080` باز می‌شود.
 
 ---
 
-## 🖥️ رابط کاربری گرافیکی (Web GUI)
+## ⚙️ فهرست کامل عملیات‌ها
 
-رابط گرافیکی فارسی و راست‌به‌چپ شامل بخش‌های زیر است:
-
-### نوار بالا
-- نمایش وضعیت اتصال مرورگر (فعال/غیرفعال)
-
-### پنل کناری
-- فهرست اتوماسیون‌های ذخیره‌شده
-- دکمه ایجاد اتوماسیون جدید
-- دکمه راهنمای سریع
-
-### ویرایشگر اتوماسیون
-- **عنوان و توضیحات:** نام‌گذاری و شرح اتوماسیون
-- **ویزارد بصری:** افزودن گام‌ها با کلیک روی چیپ‌ها (بدون نیاز به نوشتن JSON)
-- **ویرایش JSON:** ویرایش مستقیم ساختار JSON برای کاربران پیشرفته
-- **جابه‌جایی و حذف گام‌ها:** دکمه‌های بالا/پایین/حذف در هر گام
-
-### نتایج اجرا
-- نمایش نتیجه هر گام به‌صورت بصری (موفق/ناموفق)
-
-### تاریخچه (لاگ)
-- گزارش تمامی اجراهای قبلی با زمان، وضعیت و جزئیات
-
----
-
-## ⚙️ عملیات‌های قابل تعریف در اتوماسیون
-
+### ناوبری و تعامل
 | عملیات | پارامترها | کاربرد |
 |--------|----------|--------|
-| `navigate` | `url`, `wait` | هدایت مرورگر به آدرس وب |
-| `click` | `selector`, `wait` | کلیک روی دکمه یا لینک با سلکتور CSS |
-| `type` | `selector`, `text` | وارد کردن نام کاربری، رمز عبور، یا هر متن |
-| `wait` | `seconds` | توقف زمانی (برای بارگذاری صفحه) |
-| `wait_for_element` | `selector`, `timeout` | صبر تا ظاهرشدن عنصر خاص در صفحه |
-| `evaluate_js` | `code` | اجرای کد JavaScript دلخواه در صفحه |
-| `bale_export` | `count`, `timeout` | استخراج آخرین پیام‌های شخصی بله |
+| `navigate` | `url`, `wait` | هدایت به آدرس وب |
+| `click` | `selector`, `wait` | کلیک روی عنصر (با auto-scroll) |
+| `scroll` | `selector`, `direction`, `amount` | اسکرول صفحه یا عنصر |
+| `scroll_to_bottom` | `selector`, `max_scrolls`, `wait` | پیمایش کامل لیست‌های نامحدود |
 
-### سلکتور CSS چیست؟
-سلکتور CSS آدرس یک عنصر HTML در صفحه وب است:
-- `#username` → عنصر با شناسه `username`
-- `.login-btn` → عنصر با کلاس `login-btn`
-- `input[type="password"]` → فیلد رمز عبور
-- `button[type="submit"]` → دکمه ارسال فرم
+### ورودی و فرم
+| عملیات | پارامترها | کاربرد |
+|--------|----------|--------|
+| `type` | `selector`, `text`, `clear` | تایپ متن (پشتیبانی از `{{var}}`) |
+| `type_human` | `selector`, `text`, `char_delay` | تایپ کاراکتر به کاراکتر (ضد تشخیص ربات) |
+| `select_option` | `selector`, `value` | انتخاب گزینه از منوی کشویی |
+
+### انتظار
+| عملیات | پارامترها | کاربرد |
+|--------|----------|--------|
+| `wait` | `seconds` | توقف زمانی |
+| `wait_for_element` | `selector`, `timeout` | صبر تا ظاهرشدن عنصر |
+| `wait_element_gone` | `selector`, `timeout` | صبر تا ناپدیدشدن عنصر (لودینگ) |
+| `wait_for_human` | `prompt`, `success_selector`, `timeout` | توقف برای کپچا/تأیید دستی |
+
+### استخراج داده
+| عملیات | پارامترها | کاربرد |
+|--------|----------|--------|
+| `extract_text` | `selector`, `attribute`, `store_as` | استخراج متن یک عنصر |
+| `extract_list` | `selector`, `attribute`, `store_as` | استخراج لیست از چند عنصر |
+| `crawl_links` | `selector`, `store_as` | جمع‌آوری لینک‌های صفحه |
+| `screenshot` | — | ذخیره اسکرین‌شات |
+
+### منطق و کنترل
+| عملیات | پارامترها | کاربرد |
+|--------|----------|--------|
+| `set_variable` | `key`, `value` | تعریف متغیر داینامیک |
+| `evaluate_js` | `code`, `store_as` | اجرای JavaScript و ذخیره نتیجه |
+| `loop` | `count`, `steps` | تکرار زیرگام‌ها (`{{loop_index}}`) |
+| `conditional` | `selector`, `then_steps`, `else_steps` | اجرای شرطی |
+| `bale_export` | `count`, `timeout` | استخراج پیام‌های بله |
 
 ---
 
-## 📋 نمونه اتوماسیون‌ها
+## 📦 قالب‌های آماده
 
-### لاگین در یک سامانه وب
+### ورود به سایت (عمومی)
 ```json
 [
-  {"action": "navigate", "url": "https://portal.example.com/login", "wait": 2},
+  {"action": "navigate", "url": "https://example.com/login", "wait": 2},
   {"action": "type", "selector": "#username", "text": "admin"},
-  {"action": "type", "selector": "#password", "text": "mypass123"},
+  {"action": "type", "selector": "#password", "text": "mypass"},
   {"action": "click", "selector": "button[type=submit]", "wait": 3},
   {"action": "wait_for_element", "selector": ".dashboard", "timeout": 10}
 ]
 ```
 
-### استخراج ۲۰ پیام اخیر بله
+### ورود با کپچا (انتظار دخالت کاربر)
 ```json
 [
-  {"action": "bale_export", "count": 20, "timeout": 25}
+  {"action": "navigate", "url": "https://example.com/login", "wait": 2},
+  {"action": "type", "selector": "#username", "text": "admin"},
+  {"action": "type", "selector": "#password", "text": "mypass"},
+  {"action": "wait_for_human", "prompt": "کپچا را حل کنید و دکمه ورود را بزنید.",
+   "success_selector": ".dashboard", "timeout": 120}
 ]
 ```
 
-### ورود به سایت و کلیک روی منو
+### پر کردن فرم با متغیرهای داینامیک
 ```json
 [
-  {"action": "navigate", "url": "https://app.example.com", "wait": 3},
-  {"action": "wait_for_element", "selector": "nav.main-menu", "timeout": 10},
-  {"action": "click", "selector": "nav.main-menu a:first-child", "wait": 1},
-  {"action": "evaluate_js", "code": "document.title"}
+  {"action": "set_variable", "key": "user", "value": "admin"},
+  {"action": "set_variable", "key": "pass", "value": "123456"},
+  {"action": "navigate", "url": "https://example.com/form", "wait": 2},
+  {"action": "type", "selector": "#username", "text": "{{user}}"},
+  {"action": "type_human", "selector": "#password", "text": "{{pass}}", "char_delay": 0.1},
+  {"action": "click", "selector": "button[type=submit]", "wait": 2}
+]
+```
+
+### پیمایش لیست و استخراج آیتم‌ها
+```json
+[
+  {"action": "navigate", "url": "https://example.com/list", "wait": 3},
+  {"action": "scroll_to_bottom", "max_scrolls": 15, "wait": 1},
+  {"action": "extract_list", "selector": ".list-item", "store_as": "items"}
+]
+```
+
+### جمع‌آوری لینک‌های صفحه
+```json
+[
+  {"action": "navigate", "url": "https://example.com", "wait": 3},
+  {"action": "crawl_links", "selector": "a[href]", "store_as": "links"}
 ]
 ```
 
@@ -129,96 +134,65 @@ start-gui.cmd
 ## 📁 ساختار پروژه
 
 ```
-├── bale_agent.py           # منطق اصلی استخراج بله و مدیریت CDP
-├── page_adapter.js         # اسکریپت تزریقی جهت خوانش DOM بله
-├── automation_engine.py    # موتور اتوماسیون پارامتریک CDP
-├── automation_db.py        # مدیریت دیتابیس SQLite (اتوماسیون‌ها و لاگ‌ها)
-├── web_gui.py              # سرور HTTP و REST API رابط گرافیکی
+├── bale_agent.py           # هسته CDP و استخراج بله
+├── page_adapter.js         # اسکریپت خوانش DOM بله
+├── automation_engine.py    # موتور اتوماسیون ۲۰+ عملیات + قالب‌های آماده
+├── automation_db.py        # دیتابیس SQLite
+├── web_gui.py              # سرور HTTP و REST API
 ├── ui/
-│   ├── index.html          # رابط کاربری فارسی RTL
-│   ├── style.css           # استایل مدرن
-│   └── app.js              # منطق رابط کاربری و ویزارد بصری
-├── start-browser.cmd       # راه‌اندازی مرورگر با CDP
-├── start-gui.cmd           # راه‌اندازی رابط گرافیکی
-├── export-10.cmd           # استخراج سریع ۱۰ پیام
-├── run.cmd                 # اجرای دستورات با پایتون پرتابل
-├── make.cmd                # بسته‌بندی ZIP قابل‌حمل
-├── build_portable.py       # دریافت runtime پایتون (فقط توسعه‌دهنده)
-├── runtime/                # پایتون Embeddable x64 (بدون نیاز به نصب)
-├── vendor/                 # وابستگی websocket-client (wheel)
-├── tests/                  # تست‌های واحد
-├── README.fa.md            # مستندات کامل فارسی (استخراج بله)
-└── LICENSE                 # مجوز MIT
+│   ├── index.html          # رابط فارسی RTL
+│   ├── style.css           # طراحی مدرن
+│   ├── app.js              # ویزارد بصری و منطق UI
+│   └── fonts/              # فونت وزیرمتن (آفلاین)
+├── start-browser.cmd       :: مرورگر CDP
+├── start-gui.cmd           :: رابط گرافیکی
+├── export-10.cmd           :: استخراج سریع
+├── run.cmd                 :: اجرای دستورات
+├── make.cmd                :: بسته‌بندی ZIP
+├── runtime/                # پایتون Embeddable x64
+├── vendor/                 # websocket-client wheel
+├── tests/                  # تست‌ها
+└── LICENSE                 # MIT
 ```
 
 ---
 
-## 🔒 امنیت و حریم خصوصی
+## 🔒 امنیت
 
-- اتصال CDP فقط روی `127.0.0.1` (localhost) انجام می‌شود.
-- هیچ داده‌ای به سرور خارجی ارسال نمی‌شود.
-- از API خصوصی بله، کوکی، رمز عبور یا شنود شبکه استفاده نمی‌شود.
-- پروفایل مرورگر مختص برنامه است و با پروفایل شخصی تداخل ندارد.
-- خروجی‌ها بدون رمزگذاری ذخیره می‌شوند — مسئولیت نگهداری با کاربر است.
-
----
-
-## 🛠️ دستورات ترمینال
-
-```bat
-:: راه‌اندازی مرورگر
-run.cmd launch [--browser PATH] [--port PORT] [--profile PATH]
-
-:: استخراج پیام بله
-run.cmd export --count N [--port PORT] [--timeout SEC] [--output DIR]
-
-:: رابط گرافیکی
-run.cmd gui
-
-:: بسته‌بندی ZIP
-make.cmd
-```
+- اتصال CDP فقط روی `127.0.0.1`
+- هیچ داده‌ای به سرور خارجی ارسال نمی‌شود
+- پروفایل مرورگر مختص برنامه
+- خروجی‌ها بدون رمزگذاری — مسئولیت نگهداری با کاربر
 
 ---
 
-## 🧪 تست‌ها
+## 📌 نیازمندی‌ها
 
-```bat
-python -m unittest discover -s tests -v
-```
-
----
-
-## 📌 نیازمندی‌های سیستم مقصد
-
-- **سیستم‌عامل:** Windows x64 (تست‌شده روی ویندوز ۱۰ و ۱۱)
-- **مرورگر:** Chrome یا Microsoft Edge (از قبل نصب‌شده)
-- **دسترسی ادمین:** نیاز نیست
-- **اینترنت:** فقط برای دسترسی به `web.bale.ai` یا سایت مقصد اتوماسیون
-- **پایتون:** نیاز نیست (runtime پرتابل شامل بسته است)
+- Windows x64 (تست‌شده: ویندوز ۱۰/۱۱)
+- Chrome یا Edge نصب‌شده
+- بدون نیاز به دسترسی ادمین یا نصب پایتون
 
 ---
 
 <a name="english-summary"></a>
 ## English Summary
 
-**Bale Portable Agent** is an offline, zero-dependency Python toolkit for:
+**Portable Web Agent** is an offline, zero-dependency CDP browser automation toolkit with a Persian RTL Web GUI.
 
-1. **Browser Automation via CDP:** Define multi-step automations (navigate, click, type, wait, JS eval) as JSON — managed through a Persian RTL Web GUI with a visual step builder.
-2. **Bale Web Message Export:** Extract the latest messages from personal Bale conversations into TXT (Jalali calendar) and JSON files.
-
-### Key Features
-- **Portable & Offline:** Runs on air-gapped / Active Directory machines without Python install, pip, admin rights, or browser drivers.
-- **Visual Automation Builder:** Web-based Persian GUI at `localhost:8080` with drag-to-reorder steps, chip-based action picker, and inline help.
-- **SQLite Database:** Stores automations and execution logs locally.
-- **CDP Engine:** Direct WebSocket connection to Chrome/Edge debugging port — no Selenium/Playwright.
-- **Dual Output:** `.txt` (Persian/Jalali) and `.json` for Bale exports.
+### Features
+- **20+ CDP Actions:** navigate, click, type (normal & human-like), scroll, wait, extract text/lists, crawl links, screenshot, JS eval, loops, conditionals
+- **Human-in-the-loop:** `wait_for_human` pauses for CAPTCHA/2FA with on-page banner
+- **Dynamic Variables:** `set_variable` + `{{var}}` templates in text fields
+- **Built-in Templates:** Login (basic & CAPTCHA), form fill, list crawl, link crawl, Bale export
+- **Portable:** Runs on air-gapped Active Directory machines — no Python install, pip, admin rights, or browser drivers
+- **SQLite Storage:** Automations and execution logs stored locally
+- **Visual Builder:** Chip-based step picker, drag-to-reorder, duplicate, inline editing
 
 ### Quick Start
 ```bat
-start-browser.cmd       :: Launch dedicated browser with CDP
-start-gui.cmd           :: Open Web GUI at localhost:8080
-export-10.cmd           :: Quick export 10 recent Bale messages
+start-browser.cmd       :: Launch Chrome/Edge with CDP
+start-gui.cmd           :: Web GUI at localhost:8080
+export-10.cmd           :: Quick Bale message export
 make.cmd                :: Package as portable ZIP
 ```
 
@@ -226,4 +200,4 @@ make.cmd                :: Package as portable ZIP
 
 ## License
 
-[MIT License](LICENSE)
+[MIT](LICENSE)

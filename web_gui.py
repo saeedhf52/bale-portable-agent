@@ -1,12 +1,10 @@
-"""Web GUI Server & REST API for Bale Portable Agent (No external dependencies)."""
+"""Web GUI Server & REST API for Portable Web Agent (No external dependencies)."""
 from __future__ import annotations
 
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import os
 from pathlib import Path
 import sys
-import threading
 import urllib.parse
 import webbrowser
 
@@ -15,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 import automation_db as db
 import automation_engine as engine
-from bale_agent import probe_endpoint, endpoint_targets
+from bale_agent import probe_endpoint
 
 UI_DIR = ROOT / "ui"
 PORT = 8080
@@ -23,7 +21,7 @@ PORT = 8080
 
 class AgentRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # Suppress default HTTP logging to keep console clean
+        pass
 
     def _send_json(self, data, code=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -36,13 +34,18 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, file_path: Path, content_type: str):
+    MIME = {".html": "text/html", ".css": "text/css", ".js": "application/javascript",
+            ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
+            ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf"}
+
+    def _send_file(self, file_path: Path):
         if not file_path.is_file():
             self.send_error(404, "File Not Found")
             return
         content = file_path.read_bytes()
+        mime = self.MIME.get(file_path.suffix, "application/octet-stream")
         self.send_response(200)
-        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Type", f"{mime}; charset=utf-8" if mime.startswith("text") or mime.endswith("json") or mime.endswith("javascript") else mime)
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -60,24 +63,23 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/status":
-            browser_ok = probe_endpoint(9222)
-            self._send_json({"browser_active": browser_ok, "port": 9222})
+            self._send_json({"browser_active": probe_endpoint(9222), "port": 9222})
         elif path == "/api/automations":
             if "id" in query:
                 auto = db.get_automation(int(query["id"][0]))
                 self._send_json(auto or {}, code=200 if auto else 404)
             else:
                 self._send_json(db.list_automations())
+        elif path == "/api/templates":
+            tpls = {k: {"name": v["name"], "description": v["description"], "steps": v["steps"]}
+                    for k, v in engine.TEMPLATES.items()}
+            self._send_json(tpls)
         elif path == "/api/logs":
             self._send_json(db.list_logs())
         elif path == "/" or path == "/index.html":
-            self._send_file(UI_DIR / "index.html", "text/html")
-        elif path == "/style.css":
-            self._send_file(UI_DIR / "style.css", "text/css")
-        elif path == "/app.js":
-            self._send_file(UI_DIR / "app.js", "application/javascript")
+            self._send_file(UI_DIR / "index.html")
         else:
-            self._send_file(UI_DIR / path.lstrip("/"), "text/plain")
+            self._send_file(UI_DIR / path.lstrip("/"))
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -92,7 +94,6 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             desc = body.get("description", "")
             steps = body.get("steps", [])
             steps_json = json.dumps(steps, ensure_ascii=False) if isinstance(steps, list) else str(steps)
-
             saved_id = db.save_automation(name, desc, steps_json, auto_id)
             self._send_json({"success": True, "id": saved_id})
 
@@ -135,7 +136,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
 def main():
     db.init_db()
     server = HTTPServer(("127.0.0.1", PORT), AgentRequestHandler)
-    print(f"Bale Portable Agent GUI active at http://127.0.0.1:{PORT}")
+    print(f"Web Agent GUI: http://127.0.0.1:{PORT}")
     webbrowser.open(f"http://127.0.0.1:{PORT}")
     try:
         server.serve_forever()
