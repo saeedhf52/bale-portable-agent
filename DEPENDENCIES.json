@@ -1,0 +1,14 @@
+{
+  "python": {
+    "version": "3.13.2",
+    "architecture": "Windows x64",
+    "type": "embeddable zip"
+  },
+  "websocket_client": {
+    "version": "1.9.2",
+    "file": "websocket_client-1.9.2-py3-none-any.whl"
+  },
+  "runtime_network_dependencies": [
+    "Bale Web connectivity only"
+  ]
+}

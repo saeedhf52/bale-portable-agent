@@ -4,9 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Portable runtime & vendor (generated via build_portable.py)
-/runtime/
-/vendor/
+# Portable runtime & vendor (included for standalone offline deployment)
 DEPENDENCIES.json
 
 # Export output & profiles
