@@ -106,14 +106,14 @@ def _type_human(cdp, step, ctx):
 
 
 def _wait(cdp, step, ctx):
-    seconds = float(step.get("seconds", 1))
+    seconds = _to_float(step.get("seconds"), 1.0)
     time.sleep(seconds)
     return {"message": f"انتظار {seconds} ثانیه"}
 
 
 def _wait_for_element(cdp, step, ctx):
     sel = step.get("selector", "")
-    timeout = float(step.get("timeout", 10))
+    timeout = _to_float(step.get("timeout"), 10.0)
     _ensure(cdp, sel, timeout)
     return {"message": f"عنصر {sel} ظاهر شد."}
 
@@ -121,7 +121,7 @@ def _wait_for_element(cdp, step, ctx):
 def _wait_element_gone(cdp, step, ctx):
     """Wait until an element disappears (e.g. loading spinner)."""
     sel = step.get("selector", "")
-    timeout = float(step.get("timeout", 15))
+    timeout = _to_float(step.get("timeout"), 15.0)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not cdp.evaluate(f"!!document.querySelector({_js_q(sel)})"):
@@ -133,7 +133,7 @@ def _wait_element_gone(cdp, step, ctx):
 def _wait_for_human(cdp, step, ctx):
     """Pause and wait for human intervention (captcha, 2FA, etc.)."""
     sel = step.get("success_selector", "")
-    timeout = float(step.get("timeout", 120))
+    timeout = _to_float(step.get("timeout"), 120.0)
     prompt_msg = step.get("prompt", "لطفاً عملیات دستی (مثلاً کپچا) را انجام دهید...")
     log(f"⏸️  انتظار دخالت کاربر: {prompt_msg}")
     # Inject a visible banner on the page
@@ -204,7 +204,7 @@ def _scroll(cdp, step, ctx):
     """Scroll page or element."""
     sel = step.get("selector", "")
     direction = step.get("direction", "down")
-    amount = int(step.get("amount", 500))
+    amount = _to_int(step.get("amount"), 500)
     dy = amount if direction == "down" else -amount
     if sel:
         cdp.evaluate(f"""(() => {{
@@ -213,15 +213,15 @@ def _scroll(cdp, step, ctx):
         }})()""")
     else:
         cdp.evaluate(f"window.scrollBy(0, {dy})")
-    time.sleep(step.get("wait", 0.5))
+    time.sleep(_to_float(step.get("wait"), 0.5))
     return {"message": f"اسکرول {'پایین' if direction == 'down' else 'بالا'} ({amount}px)"}
 
 
 def _scroll_to_bottom(cdp, step, ctx):
     """Incrementally scroll to bottom of page/element, collecting items."""
     sel = step.get("selector", "")
-    max_scrolls = int(step.get("max_scrolls", 20))
-    wait = float(step.get("wait", 1))
+    max_scrolls = _to_int(step.get("max_scrolls"), 20)
+    wait = _to_float(step.get("wait"), 1.0)
     for _ in range(max_scrolls):
         if sel:
             at_end = cdp.evaluate(f"""(() => {{
@@ -297,7 +297,7 @@ def _set_variable(cdp, step, ctx):
 
 def _loop(cdp, step, ctx):
     """Run sub-steps multiple times."""
-    count = int(step.get("count", 1))
+    count = _to_int(step.get("count"), 1)
     sub_steps = step.get("steps", [])
     results = []
     for i in range(count):
@@ -400,7 +400,7 @@ def _auto_login(cdp, step, ctx):
     url = step.get("url", "")
     username = step.get("username", "")
     password = step.get("password", "")
-    timeout = float(step.get("timeout", 30))
+    timeout = _to_float(step.get("timeout"), 30.0)
     human_on_captcha = step.get("human_on_captcha", True)
 
     # Replace {{var}} placeholders
@@ -656,14 +656,32 @@ def _scrape_table(cdp, step, ctx):
     return {"result": result, "message": f"جدول استخراج شد: {result.get('row_count', 0)} ردیف — صفحه {result.get('pagination', {}).get('current_page', '?')} از {result.get('pagination', {}).get('total_pages', '?')}"}
 
 
+def _to_int(val, default=1):
+    if val is None or val == "":
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _to_float(val, default=1.0):
+    if val is None or val == "":
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def _scrape_table_pages(cdp, step, ctx):
     """Scrape table data across multiple pages with auto-pagination."""
-    max_pages = int(step.get("max_pages", 1))
-    table_sel = step.get("table_selector", "")
-    next_sel = step.get("next_selector", "")
-    wait = float(step.get("wait", 2))
-    include_hidden = step.get("include_hidden", False)
-    store = step.get("store_as", "table_all_pages")
+    max_pages = _to_int(step.get("max_pages"), 1)
+    table_sel = step.get("table_selector") or ""
+    next_sel = step.get("next_selector") or ""
+    wait = _to_float(step.get("wait"), 2.0)
+    include_hidden = bool(step.get("include_hidden", False))
+    store = step.get("store_as") or "table_all_pages"
 
     all_rows = []
     headers = []
@@ -745,8 +763,8 @@ def _scrape_table_pages(cdp, step, ctx):
 def _bale_export(cdp, step, ctx):
     from bale_agent import collect_rows, collect_message, save_report, TEHRAN
 
-    count = int(step.get("count", 10))
-    timeout = float(step.get("timeout", 20))
+    count = _to_int(step.get("count"), 10)
+    timeout = _to_float(step.get("timeout"), 20.0)
 
     report = {
         "schema_version": 1, "requested_count": count,
