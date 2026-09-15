@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 import automation_db as db
 import automation_engine as engine
 import data_processor as dp
-from bale_agent import probe_endpoint
+from bale_agent import probe_endpoint, ensure_browser_ready
 
 UI_DIR = ROOT / "ui"
 PORT = 8080
@@ -64,7 +64,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/status":
-            self._send_json({"browser_active": probe_endpoint(9222), "port": 9222})
+            active = probe_endpoint(9222)
+            self._send_json({"browser_active": active, "port": 9222})
         elif path == "/api/automations":
             if "id" in query:
                 auto = db.get_automation(int(query["id"][0]))
@@ -148,6 +149,13 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "csv_name": csv_name})
             except Exception as exc:
                 self._send_json({"success": False, "error": str(exc)}, code=400)
+
+        elif path == "/api/browser/ensure":
+            try:
+                ready = ensure_browser_ready(port=9222)
+                self._send_json({"success": ready, "message": "مرورگر آماده است." if ready else "مرورگر راه‌اندازی نشد."})
+            except Exception as exc:
+                self._send_json({"success": False, "error": str(exc)}, code=500)
         else:
             self.send_error(404, "Not Found")
 

@@ -187,6 +187,74 @@ def probe_endpoint(port):
         return False
 
 
+def kill_browser_processes():
+    """Kill any Chrome/Edge processes started with our debug profile."""
+    import signal
+    try:
+        # taskkill by window title or profile path marker
+        subprocess.run(
+            ["taskkill", "/F", "/FI", "WINDOWTITLE eq *BalePortableAgent*"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except Exception:
+        pass
+    # Also try killing by port binding
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "chrome.exe", "/FI", "STATUS eq RUNNING"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def ensure_browser_ready(port=9222, browser_path=None, start_url=None, timeout=25):
+    """Check browser connectivity. If dead/stuck, restart it. Returns True when ready."""
+    # 1. Quick probe
+    if probe_endpoint(port):
+        # Verify WebSocket actually works
+        try:
+            targets = endpoint_targets(port)
+            pages = [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+            if pages:
+                cdp = CDP(pages[0]["webSocketDebuggerUrl"], timeout=5)
+                cdp.evaluate("1+1")  # heartbeat
+                cdp.close()
+                log("✅ مرورگر فعال و آماده است.")
+                return True
+        except Exception as exc:
+            log(f"⚠️ مرورگر پاسخ‌گو نیست: {exc}")
+
+    # 2. Browser not responding — try to kill stale processes
+    log("🔄 تلاش برای راه‌اندازی مجدد مرورگر...")
+    kill_browser_processes()
+    time.sleep(2)
+
+    # 3. Launch fresh browser
+    browser = find_browser(browser_path)
+    profile = Path(
+        os.environ.get("LOCALAPPDATA", str(Path.home()))
+    ) / "BalePortableAgent" / "BrowserProfile"
+    profile.mkdir(parents=True, exist_ok=True)
+
+    url = start_url or "about:blank"
+    subprocess.Popen([
+        str(browser), f"--remote-debugging-port={port}",
+        "--remote-debugging-address=127.0.0.1", f"--user-data-dir={profile}",
+        "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
+        "--disable-component-update", "--disable-sync", "--new-window", url,
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # 4. Wait for it
+    try:
+        wait_until(lambda: probe_endpoint(port), bool, timeout, "browser startup")
+        log("✅ مرورگر با موفقیت راه‌اندازی شد.")
+        return True
+    except AgentError:
+        log("❌ مرورگر راه‌اندازی نشد.")
+        return False
+
+
 def jalali_date(date):
     """Gregorian -> Solar Hijri arithmetic conversion, for modern calendar dates."""
     gy, gm, gd = date.year, date.month, date.day

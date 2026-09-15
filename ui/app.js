@@ -59,6 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loop:             { label:'🔁 حلقه تکرار',        fields:[{key:'count',label:'تعداد',ph:'3',type:'number'}] },
     conditional:      { label:'❓ اجرای شرطی',        fields:[{key:'selector',label:'سلکتور شرط',ph:'.error-msg'}] },
     bale_export:      { label:'📨 استخراج بله',       fields:[{key:'count',label:'تعداد مخاطب',ph:'10',type:'number'},{key:'timeout',label:'تایم‌اوت (ث)',ph:'20',type:'number'}] },
+    detect_login:     { label:'🔍 شناسایی فرم ورود',  fields:[{key:'store_as',label:'ذخیره در متغیر',ph:'login_info'}] },
+    auto_login:       { label:'🔐 ورود هوشمند',       fields:[{key:'url',label:'آدرس صفحه ورود',ph:'https://example.com/login'},{key:'username',label:'نام کاربری',ph:'admin'},{key:'password',label:'رمز عبور',ph:''},{key:'human_on_captcha',label:'انتظار کپچا',ph:'true'},{key:'timeout',label:'حداکثر (ث)',ph:'30',type:'number'},{key:'success_selector',label:'سلکتور موفقیت (اختیاری)',ph:'.dashboard'}] },
   };
 
   let currentSteps = [];
@@ -458,4 +460,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Init ───
   checkStatus(); loadAutomations(); loadTemplates(); loadLogs();
   setInterval(checkStatus, 5000);
+
+  // ─── Browser Ensure ───
+  $('btn-ensure-browser').onclick = async () => {
+    const btn = $('btn-ensure-browser');
+    btn.disabled = true; btn.textContent = '⏳ بررسی...';
+    try {
+      const res = await fetch('/api/browser/ensure', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+      const data = await res.json();
+      toast(data.message || (data.success ? 'مرورگر آماده است.' : 'خطا در راه‌اندازی'), data.success ? 'success' : 'error');
+      checkStatus();
+    } catch { toast('خطای ارتباط با سرور.', 'error'); }
+    finally { btn.disabled = false; btn.textContent = '🔄 مرورگر'; }
+  };
 });

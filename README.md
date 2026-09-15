@@ -11,8 +11,12 @@
 - **آفلاین و قابل‌حمل:** بدون نیاز به نصب پایتون، `pip`، درایور مرورگر یا دسترسی ادمین
 - **سازگار با Active Directory:** اجرا روی سیستم‌های سازمانی بدون تغییر ریجستری
 - **رابط گرافیکی فارسی (RTL):** ویزارد بصری ساخت اتوماسیون با فونت وزیرمتن
-- **۲۰+ عملیات CDP:** ناوبری، کلیک، تایپ هوشمند، اسکرول، استخراج، کراول و...
-- **قالب‌های آماده:** لاگین عمومی، لاگین با کپچا، کراول لینک‌ها، پیمایش لیست، پر کردن فرم داینامیک
+- **۲۲+ عملیات CDP:** ناوبری، کلیک، تایپ هوشمند، اسکرول، استخراج، کراول و...
+- **🔐 ورود هوشمند به سایت:** تشخیص خودکار فرم لاگین (۴۰+ سلکتور)، پر کردن فیلدها، مدیریت کپچا و تأیید ورود
+- **تشخیص خودکار کپچا:** شناسایی reCAPTCHA, hCaptcha و کپچای تصویری با توقف خودکار برای دخالت کاربر
+- **بررسی خودکار مرورگر:** قبل از هر اجرا وضعیت مرورگر بررسی و در صورت نیاز راه‌اندازی/ری‌استارت می‌شود
+- **اتصال مجدد خودکار:** در صورت قطع ارتباط حین اجرا، اتصال مجدد و ادامه اتوماسیون
+- **قالب‌های آماده:** لاگین هوشمند، لاگین ساده، لاگین با کپچا، لاگین دو مرحله‌ای، کراول لینک‌ها، پیمایش لیست
 - **انتظار دخالت کاربر:** توقف خودکار هنگام برخورد با کپچا یا تأیید دو مرحله‌ای
 - **متغیرهای داینامیک:** تعریف و استفاده از متغیرها با `{{نام}}` در فیلدهای متنی
 - **حلقه و شرط:** تکرار گام‌ها و اجرای شرطی بر اساس وجود عنصر
@@ -74,11 +78,47 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 | `conditional` | `selector`, `then_steps`, `else_steps` | اجرای شرطی |
 | `bale_export` | `count`, `timeout` | استخراج پیام‌های بله |
 
+### 🔐 ورود هوشمند
+| عملیات | پارامترها | کاربرد |
+|--------|----------|--------|
+| `auto_login` | `url`, `username`, `password`, `human_on_captcha`, `timeout`, `success_selector` | تشخیص خودکار فرم ورود + پر کردن + مدیریت کپچا + تأیید |
+| `detect_login` | `store_as` | شناسایی فرم ورود بدون وارد کردن اطلاعات |
+
 ---
 
 ## 📦 قالب‌های آماده
 
-### ورود به سایت (عمومی)
+### 🔐 ورود هوشمند (تشخیص خودکار فرم)
+```json
+[
+  {"action": "auto_login", "url": "https://example.com/login",
+   "username": "admin", "password": "mypass",
+   "human_on_captcha": true, "timeout": 30}
+]
+```
+> فرم ورود را خودکار شناسایی می‌کند (۴۰+ سلکتور فارسی و انگلیسی)، فیلدها را پر می‌کند، کپچا را تشخیص می‌دهد و در صورت نیاز منتظر کاربر می‌ماند.
+
+### 🔑 ورود دو مرحله‌ای (OTP)
+```json
+[
+  {"action": "auto_login", "url": "https://example.com/login",
+   "username": "admin", "password": "mypass",
+   "human_on_captcha": true, "timeout": 30},
+  {"action": "wait_for_human",
+   "prompt": "کد تأیید پیامکی یا OTP را وارد کنید.",
+   "success_selector": ".dashboard", "timeout": 180}
+]
+```
+
+### 🔍 شناسایی فرم ورود (بدون لاگین)
+```json
+[
+  {"action": "navigate", "url": "https://example.com/login", "wait": 3},
+  {"action": "detect_login", "store_as": "login_info"}
+]
+```
+
+### ورود ساده به سایت
 ```json
 [
   {"action": "navigate", "url": "https://example.com/login", "wait": 2},
@@ -136,8 +176,9 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 ```
 ├── bale_agent.py           # هسته CDP و استخراج بله
 ├── page_adapter.js         # اسکریپت خوانش DOM بله
-├── automation_engine.py    # موتور اتوماسیون ۲۰+ عملیات + قالب‌های آماده
+├── automation_engine.py    # موتور اتوماسیون ۲۲+ عملیات + ورود هوشمند + قالب‌های آماده
 ├── automation_db.py        # دیتابیس SQLite
+├── data_processor.py       # پردازش خروجی‌ها، فیلتر، تبدیل CSV
 ├── web_gui.py              # سرور HTTP و REST API
 ├── ui/
 │   ├── index.html          # رابط فارسی RTL
@@ -180,10 +221,13 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 **Portable Web Agent** is an offline, zero-dependency CDP browser automation toolkit with a Persian RTL Web GUI.
 
 ### Features
-- **20+ CDP Actions:** navigate, click, type (normal & human-like), scroll, wait, extract text/lists, crawl links, screenshot, JS eval, loops, conditionals
+- **22+ CDP Actions:** navigate, click, type (normal & human-like), scroll, wait, extract text/lists, crawl links, screenshot, JS eval, loops, conditionals
+- **🔐 Smart Login:** Auto-detect login forms (40+ selectors for Persian & English sites), fill credentials, detect CAPTCHA, verify success/error
+- **Auto Browser Management:** Pre-flight browser check before every run — auto-launch or restart if dead/stuck
+- **Auto-Reconnect:** If connection drops mid-run, reconnects and continues
 - **Human-in-the-loop:** `wait_for_human` pauses for CAPTCHA/2FA with on-page banner
 - **Dynamic Variables:** `set_variable` + `{{var}}` templates in text fields
-- **Built-in Templates:** Login (basic & CAPTCHA), form fill, list crawl, link crawl, Bale export
+- **Built-in Templates:** Smart login, basic login, CAPTCHA login, 2FA login, form fill, list crawl, link crawl, Bale export
 - **Portable:** Runs on air-gapped Active Directory machines — no Python install, pip, admin rights, or browser drivers
 - **SQLite Storage:** Automations and execution logs stored locally
 - **Visual Builder:** Chip-based step picker, drag-to-reorder, duplicate, inline editing

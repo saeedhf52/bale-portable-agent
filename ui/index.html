@@ -35,6 +35,7 @@
         </nav>
       </div>
       <div class="topbar-left">
+        <button id="btn-ensure-browser" class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;margin-left:8px" title="بررسی و راه‌اندازی مرورگر">🔄 مرورگر</button>
         <div id="status-badge" class="badge badge-checking">
           <span class="pulse"></span> بررسی اتصال...
         </div>
@@ -132,6 +133,11 @@
                   <button class="chip" data-action="evaluate_js">📜 JS</button>
                   <button class="chip" data-action="loop">🔁 حلقه</button>
                   <button class="chip" data-action="conditional">❓ شرطی</button>
+                </div>
+                <div class="chip-group">
+                  <span class="chip-category">ورود به سایت</span>
+                  <button class="chip" data-action="auto_login">🔐 ورود هوشمند</button>
+                  <button class="chip" data-action="detect_login">🔍 شناسایی فرم</button>
                 </div>
                 <div class="chip-group">
                   <span class="chip-category">پیام‌رسان</span>
@@ -280,6 +286,24 @@
               <tr><td><code>conditional</code></td><td><code>selector</code>, <code>then_steps</code>, <code>else_steps</code></td><td>اجرای شرطی</td></tr>
             </tbody>
           </table>
+
+          <h3>🔐 ورود هوشمند به سایت</h3>
+          <table class="help-table">
+            <thead><tr><th>عملیات</th><th>پارامترها</th><th>کاربرد</th></tr></thead>
+            <tbody>
+              <tr><td><code>auto_login</code></td><td><code>url</code>, <code>username</code>, <code>password</code>, <code>human_on_captcha</code>, <code>timeout</code>, <code>success_selector</code></td><td>تشخیص خودکار فرم ورود، پر کردن فیلدها، مدیریت کپچا و تأیید ورود</td></tr>
+              <tr><td><code>detect_login</code></td><td><code>store_as</code></td><td>فقط شناسایی فرم ورود صفحه بدون وارد کردن اطلاعات</td></tr>
+            </tbody>
+          </table>
+          <p><strong>ویژگی‌های ورود هوشمند:</strong></p>
+          <ul>
+            <li>تشخیص خودکار فیلدهای نام کاربری، رمز عبور و دکمه ورود (۴۰+ سلکتور)</li>
+            <li>پشتیبانی از سایت‌های فارسی و انگلیسی</li>
+            <li>تشخیص خودکار کپچا (reCAPTCHA, hCaptcha, تصویری) و توقف برای دخالت کاربر</li>
+            <li>تشخیص ورود موفق یا پیام‌های خطا</li>
+            <li>تایپ هوشمند کاراکتر به کاراکتر برای رمز عبور (ضد تشخیص ربات)</li>
+            <li>بررسی خودکار وضعیت مرورگر قبل از شروع هر اتوماسیون</li>
+          </ul>
         </div>
       </div>
     </div>

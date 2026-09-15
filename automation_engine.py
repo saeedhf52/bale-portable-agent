@@ -6,7 +6,7 @@ import time
 import datetime as dt
 from pathlib import Path
 
-from bale_agent import CDP, endpoint_targets, AgentError, log
+from bale_agent import CDP, endpoint_targets, AgentError, log, ensure_browser_ready
 
 ROOT = Path(__file__).resolve().parent
 
@@ -321,6 +321,186 @@ def _conditional(cdp, step, ctx):
     return {"message": f"شرط ({sel}): شاخه {branch} اجرا شد.", "sub_results": results}
 
 
+def _detect_login(cdp, step, ctx):
+    """Detect login form fields on the current page automatically."""
+    result = cdp.evaluate("""(() => {
+        const selectors = {
+            username: [
+                'input[name="username"]', 'input[name="user"]', 'input[name="login"]',
+                'input[name="email"]', 'input[type="email"]', 'input[name="userid"]',
+                'input[name="user_name"]', 'input[name="loginId"]', 'input[name="account"]',
+                'input[id*="user" i]', 'input[id*="login" i]', 'input[id*="email" i]',
+                'input[id*="account" i]', 'input[id*="mobile" i]', 'input[id*="phone" i]',
+                'input[placeholder*="نام کاربری" i]', 'input[placeholder*="ایمیل" i]',
+                'input[placeholder*="شماره" i]', 'input[placeholder*="موبایل" i]',
+                'input[placeholder*="username" i]', 'input[placeholder*="email" i]',
+                'input[placeholder*="phone" i]', 'input[placeholder*="mobile" i]',
+                'input[autocomplete="username"]', 'input[autocomplete="email"]',
+                'input[type="text"]:not([name*="search" i]):not([name*="query" i])',
+                'input[type="tel"]',
+            ],
+            password: [
+                'input[type="password"]',
+                'input[name="password"]', 'input[name="pass"]', 'input[name="passwd"]',
+                'input[name="pwd"]', 'input[id*="pass" i]', 'input[id*="pwd" i]',
+                'input[placeholder*="رمز" i]', 'input[placeholder*="گذرواژه" i]',
+                'input[placeholder*="password" i]',
+                'input[autocomplete="current-password"]',
+            ],
+            submit: [
+                'button[type="submit"]', 'input[type="submit"]',
+                'button[id*="login" i]', 'button[id*="signin" i]', 'button[id*="submit" i]',
+                'button[class*="login" i]', 'button[class*="signin" i]', 'button[class*="submit" i]',
+                'a[id*="login" i]', 'a[class*="login" i]',
+                'button:not([type="button"]):not([type="reset"])',
+                '[role="button"][class*="login" i]', '[role="button"][class*="submit" i]',
+            ],
+            captcha: [
+                'iframe[src*="recaptcha"]', 'iframe[src*="captcha"]',
+                'div[class*="captcha" i]', 'div[id*="captcha" i]',
+                'img[src*="captcha" i]', 'input[name*="captcha" i]',
+                'div[class*="g-recaptcha"]', '.h-captcha',
+            ],
+            success: [
+                '.dashboard', '.profile', '.home', '.main-content',
+                '[class*="dashboard" i]', '[class*="profile" i]', '[id*="dashboard" i]',
+                '[class*="welcome" i]', '[class*="logout" i]', 'a[href*="logout" i]',
+                'button[class*="logout" i]', '[id*="user-menu" i]', '[class*="user-menu" i]',
+            ],
+        };
+        const find = (list) => {
+            for (const s of list) {
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null) return s;
+            }
+            return null;
+        };
+        const result = {
+            username_selector: find(selectors.username),
+            password_selector: find(selectors.password),
+            submit_selector: find(selectors.submit),
+            has_captcha: find(selectors.captcha) !== null,
+            captcha_selector: find(selectors.captcha),
+            success_selector: find(selectors.success),
+            is_login_page: false,
+            page_title: document.title,
+            page_url: location.href,
+        };
+        // A page is a login page if it has at least a password field or (username + submit)
+        result.is_login_page = !!(result.password_selector || (result.username_selector && result.submit_selector));
+        return result;
+    })()""")
+    if step.get("store_as"):
+        ctx[step["store_as"]] = result
+    return {"result": result, "message": f"تشخیص فرم: {'صفحه ورود یافت شد ✅' if result.get('is_login_page') else 'صفحه ورود یافت نشد ❌'}"}
+
+
+def _auto_login(cdp, step, ctx):
+    """Smart login: detect form, fill credentials, handle captcha, verify success."""
+    url = step.get("url", "")
+    username = step.get("username", "")
+    password = step.get("password", "")
+    timeout = float(step.get("timeout", 30))
+    human_on_captcha = step.get("human_on_captcha", True)
+
+    # Replace {{var}} placeholders
+    for key, val in ctx.items():
+        username = username.replace("{{" + key + "}}", str(val))
+        password = password.replace("{{" + key + "}}", str(val))
+
+    # Step 1: Navigate if URL given
+    if url:
+        cdp.call("Page.navigate", {"url": url})
+        time.sleep(step.get("wait", 3))
+
+    # Step 2: Wait for page to stabilize
+    time.sleep(1)
+
+    # Step 3: Detect login form
+    detect_result = _detect_login(cdp, {"store_as": "_login_info"}, ctx)
+    info = ctx.get("_login_info", {})
+
+    if not info.get("is_login_page"):
+        # Maybe already logged in?
+        if info.get("success_selector"):
+            return {"message": "قبلاً وارد شده‌اید. ✅", "already_logged_in": True}
+        # Try waiting a bit for page load
+        time.sleep(2)
+        detect_result = _detect_login(cdp, {"store_as": "_login_info"}, ctx)
+        info = ctx.get("_login_info", {})
+        if not info.get("is_login_page"):
+            raise AgentError(f"صفحه ورود تشخیص داده نشد. URL: {info.get('page_url', '?')}")
+
+    results = [f"صفحه ورود یافت شد: {info.get('page_title', '')}"]
+
+    # Step 4: Fill username
+    user_sel = step.get("username_selector") or info.get("username_selector")
+    if user_sel and username:
+        use_human = step.get("human_type", False)
+        if use_human:
+            _type_human(cdp, {"selector": user_sel, "text": username, "char_delay": step.get("char_delay", 0.06)}, ctx)
+        else:
+            _type_text(cdp, {"selector": user_sel, "text": username, "clear": True}, ctx)
+        results.append(f"نام کاربری وارد شد در {user_sel}")
+        time.sleep(0.3)
+
+    # Step 5: Fill password
+    pass_sel = step.get("password_selector") or info.get("password_selector")
+    if pass_sel and password:
+        _type_human(cdp, {"selector": pass_sel, "text": password, "char_delay": step.get("char_delay", 0.05)}, ctx)
+        results.append(f"رمز عبور وارد شد در {pass_sel}")
+        time.sleep(0.3)
+
+    # Step 6: Handle CAPTCHA
+    if info.get("has_captcha") and human_on_captcha:
+        results.append("کپچا تشخیص داده شد — در انتظار دخالت کاربر...")
+        _wait_for_human(cdp, {
+            "prompt": "🔒 کپچا تشخیص داده شد. لطفاً کپچا را حل کنید و سپس دکمه ورود را بزنید.",
+            "success_selector": info.get("success_selector", ""),
+            "timeout": step.get("captcha_timeout", 120),
+        }, ctx)
+        results.append("دخالت کاربر تکمیل شد.")
+        return {"message": " | ".join(results), "login_info": info}
+
+    # Step 7: Click submit
+    submit_sel = step.get("submit_selector") or info.get("submit_selector")
+    if submit_sel:
+        time.sleep(0.5)
+        _click(cdp, {"selector": submit_sel, "wait": 2}, ctx)
+        results.append(f"دکمه ورود کلیک شد: {submit_sel}")
+
+    # Step 8: Wait for success / error
+    success_sel = step.get("success_selector") or info.get("success_selector", "")
+    if success_sel:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            # Check for success
+            if cdp.evaluate(f"!!document.querySelector({_js_q(success_sel)})"):
+                results.append("ورود موفقیت‌آمیز ✅")
+                return {"message": " | ".join(results), "success": True, "login_info": info}
+            # Check for error messages
+            error_text = cdp.evaluate("""(() => {
+                const errSels = ['.error', '.alert-danger', '.error-message', '[class*="error" i]',
+                    '[class*="alert" i]:not(.alert-success)', '.text-danger', '.invalid-feedback',
+                    '[role="alert"]', '.notification-error'];
+                for (const s of errSels) {
+                    const el = document.querySelector(s);
+                    if (el && el.textContent.trim() && el.offsetParent !== null) return el.textContent.trim().slice(0, 200);
+                }
+                return null;
+            })()""")
+            if error_text:
+                results.append(f"خطای ورود: {error_text}")
+                return {"message": " | ".join(results), "success": False, "error": error_text, "login_info": info}
+            time.sleep(0.5)
+        results.append("زمان انتظار تمام شد — وضعیت ورود نامشخص")
+    else:
+        time.sleep(3)
+        results.append("فرآیند ورود تکمیل شد (بدون سلکتور موفقیت)")
+
+    return {"message": " | ".join(results), "login_info": info}
+
+
 def _bale_export(cdp, step, ctx):
     from bale_agent import collect_rows, collect_message, save_report, TEHRAN
 
@@ -368,6 +548,8 @@ ACTIONS = {
     "set_variable":     _set_variable,
     "loop":             _loop,
     "conditional":      _conditional,
+    "detect_login":     _detect_login,
+    "auto_login":       _auto_login,
     "bale_export":      _bale_export,
 }
 
@@ -383,6 +565,10 @@ def execute_step(cdp: CDP, step: dict, context: dict) -> dict:
 
 
 def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
+    # ── Pre-flight: ensure browser is alive ──
+    if not ensure_browser_ready(port):
+        raise AgentError("مرورگر راه‌اندازی نشد. لطفاً به صورت دستی start-browser.cmd را اجرا کنید.")
+
     targets = endpoint_targets(port)
     target = None
     for t in targets:
@@ -390,7 +576,7 @@ def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
             target = t
             break
     if not target:
-        raise AgentError("مرورگری برای اشکال‌زدایی یافت نشد. ابتدا start-browser.cmd را اجرا کنید.")
+        raise AgentError("صفحه‌ای در مرورگر یافت نشد. مرورگر را باز کنید.")
 
     cdp = CDP(target["webSocketDebuggerUrl"], timeout=30)
     results = []
@@ -398,7 +584,28 @@ def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
     try:
         for idx, step in enumerate(steps, 1):
             log(f"گام {idx}: {step.get('action')}")
-            res = execute_step(cdp, step, context)
+            try:
+                res = execute_step(cdp, step, context)
+            except (ConnectionError, OSError, AgentError) as exc:
+                # Connection lost mid-run — try reconnect once
+                err_msg = str(exc)
+                if "closed" in err_msg.lower() or "connection" in err_msg.lower() or "timeout" in err_msg.lower():
+                    log("⚠️ ارتباط با مرورگر قطع شد. تلاش برای اتصال مجدد...")
+                    try:
+                        cdp.close()
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                    if not ensure_browser_ready(port):
+                        raise AgentError("اتصال مجدد به مرورگر ناموفق بود.")
+                    targets = endpoint_targets(port)
+                    target = next((t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")), None)
+                    if not target:
+                        raise AgentError("صفحه‌ای پس از اتصال مجدد یافت نشد.")
+                    cdp = CDP(target["webSocketDebuggerUrl"], timeout=30)
+                    res = execute_step(cdp, step, context)
+                else:
+                    raise
             results.append({"step": idx, "action": step.get("action"), **res})
     finally:
         cdp.close()
@@ -408,8 +615,15 @@ def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
 # ─── Built-in Templates ───
 
 TEMPLATES = {
+    "smart_login": {
+        "name": "🔐 ورود هوشمند به سایت",
+        "description": "تشخیص خودکار فرم ورود، پر کردن اطلاعات، مدیریت کپچا و تأیید ورود",
+        "steps": [
+            {"action": "auto_login", "url": "https://example.com/login", "username": "", "password": "", "human_on_captcha": True, "timeout": 30},
+        ]
+    },
     "login_basic": {
-        "name": "ورود به سایت (عمومی)",
+        "name": "ورود ساده به سایت",
         "description": "هدایت به صفحه ورود، وارد کردن نام کاربری و رمز، کلیک روی دکمه ورود",
         "steps": [
             {"action": "navigate", "url": "https://example.com/login", "wait": 2},
@@ -425,8 +639,24 @@ TEMPLATES = {
         "steps": [
             {"action": "navigate", "url": "https://example.com/login", "wait": 2},
             {"action": "type", "selector": "#username", "text": ""},
-            {"action": "type", "selector": "#password", "text": ""},
+            {"action": "type_human", "selector": "#password", "text": "", "char_delay": 0.06},
             {"action": "wait_for_human", "prompt": "لطفاً کپچا را حل کنید و دکمه ورود را بزنید.", "success_selector": ".dashboard", "timeout": 120},
+        ]
+    },
+    "login_2fa": {
+        "name": "🔑 ورود دو مرحله‌ای (OTP)",
+        "description": "ورود هوشمند + انتظار برای وارد کردن کد تأیید پیامکی یا OTP توسط کاربر",
+        "steps": [
+            {"action": "auto_login", "url": "https://example.com/login", "username": "", "password": "", "human_on_captcha": True, "timeout": 30},
+            {"action": "wait_for_human", "prompt": "کد تأیید پیامکی یا OTP را وارد کنید و دکمه تأیید را بزنید.", "success_selector": ".dashboard", "timeout": 180},
+        ]
+    },
+    "detect_and_report": {
+        "name": "🔍 شناسایی فرم ورود صفحه",
+        "description": "بدون ورود — فقط فرم لاگین صفحه را شناسایی و گزارش می‌دهد",
+        "steps": [
+            {"action": "navigate", "url": "https://example.com/login", "wait": 3},
+            {"action": "detect_login", "store_as": "login_info"},
         ]
     },
     "crawl_page": {
