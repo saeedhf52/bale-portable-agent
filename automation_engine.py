@@ -515,10 +515,20 @@ def _scrape_table(cdp, step, ctx):
         function findTable() {{
             if (tSel) {{
                 const el = document.querySelector(tSel);
-                if (el) return el.tagName === 'TABLE' ? el : el.querySelector('table');
+                if (el) {{
+                    if (el.tagName === 'TABLE') return el;
+                    const childT = el.querySelector('table');
+                    if (childT) return childT;
+                    const parentGrid = el.closest('.k-grid, .jarviswidget, [id*="grid" i]');
+                    if (parentGrid) {{
+                        const gT = parentGrid.querySelector('table[role="treegrid"], table[role="grid"], table');
+                        if (gT) return gT;
+                    }}
+                    return el;
+                }}
             }}
             // Kendo Grid
-            let t = document.querySelector('.k-grid table[role="treegrid"], .k-grid table[role="grid"]');
+            let t = document.querySelector('.k-grid table[role="treegrid"], .k-grid table[role="grid"], #LetterIndex table');
             if (t) return t;
             // Bootstrap / generic data table
             t = document.querySelector('table.table, table.dataTable, table.display, table[id]');
@@ -557,7 +567,7 @@ def _scrape_table(cdp, step, ctx):
 
         // ── Extract rows ──
         function getRows(table, headers) {{
-            const visIdx = new Set(headers.filter(h => h.visible).map(h => h.index));
+            const visIdx = (headers && headers.length > 0) ? new Set(headers.filter(h => h.visible).map(h => h.index)) : null;
             const body = table.querySelector('tbody') || table;
             const dataRows = [];
             body.querySelectorAll('tr').forEach(tr => {{
@@ -570,14 +580,14 @@ def _scrape_table(cdp, step, ctx):
                 const row = {{}};
                 let hasData = false;
                 cells.forEach((td, i) => {{
-                    if (!includeHidden && !visIdx.has(i)) return;
+                    if (visIdx && !includeHidden && !visIdx.has(i)) return;
                     const hdr = headers.find(h => h.index === i);
-                    const key = (hdr && (hdr.field || hdr.text)) || ('col_' + i);
-                    if (!key || key === '\\u00a0' || key === '') return;
+                    let key = (hdr && (hdr.field || hdr.text)) || ('col_' + (i + 1));
+                    if (!key || key === '\\u00a0' || key.trim() === '') key = 'col_' + (i + 1);
                     let val = td.textContent.trim().replace(/\\s+/g, ' ');
                     // Try to get link href
                     const link = td.querySelector('a[href]');
-                    if (link) {{
+                    if (link && link.href && !link.href.startsWith('javascript:')) {{
                         row[key + '_link'] = link.href;
                     }}
                     if (val) hasData = true;
