@@ -35,7 +35,7 @@ def _navigate(cdp, step, ctx):
     if not url:
         raise AgentError("آدرس URL وارد نشده است.")
     cdp.call("Page.navigate", {"url": url})
-    time.sleep(step.get("wait", 2))
+    time.sleep(_to_float(step.get("wait"), 2.0))
     return {"message": f"هدایت به {url}"}
 
 
@@ -52,7 +52,7 @@ def _click(cdp, step, ctx):
     }})()""")
     if not found:
         raise AgentError(f"عنصر {sel} پیدا نشد.")
-    time.sleep(step.get("wait", 0.5))
+    time.sleep(_to_float(step.get("wait"), 0.5))
     return {"message": f"کلیک روی {sel}"}
 
 
@@ -100,7 +100,7 @@ def _type_human(cdp, step, ctx):
             el.value += {_js_q(ch)};
             el.dispatchEvent(new Event('input', {{bubbles:true}}));
         }})()""")
-        time.sleep(step.get("char_delay", 0.08))
+        time.sleep(_to_float(step.get("char_delay"), 0.08))
     cdp.evaluate(f"""document.querySelector({_js_q(sel)}).dispatchEvent(new Event('change', {{bubbles:true}}))""")
     return {"message": f"تایپ هوشمند ({len(text)} کاراکتر) در {sel}"}
 
@@ -411,7 +411,7 @@ def _auto_login(cdp, step, ctx):
     # Step 1: Navigate if URL given
     if url:
         cdp.call("Page.navigate", {"url": url})
-        time.sleep(step.get("wait", 3))
+        time.sleep(_to_float(step.get("wait"), 3.0))
 
     # Step 2: Wait for page to stabilize
     time.sleep(1)
