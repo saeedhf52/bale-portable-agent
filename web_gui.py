@@ -139,8 +139,15 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 db.add_log(auto_id, "موفق", f"اجرای موفق {len(results)} گام", {"results": results})
                 self._send_json({"success": True, "results": results})
             except Exception as exc:
+                import traceback
+                print("\n" + "="*50)
+                print("❌ ERROR IN AUTOMATION EXECUTION:")
+                traceback.print_exc()
+                print("="*50 + "\n")
+                tb_str = traceback.format_exc()
+                err_msg = f"{exc}\n\nTraceback:\n{tb_str}"
                 db.add_log(auto_id, "خطا", str(exc))
-                self._send_json({"success": False, "error": str(exc)}, code=500)
+                self._send_json({"success": False, "error": str(exc), "traceback": tb_str}, code=500)
 
         elif path == "/api/outputs/to_csv":
             fname = body.get("name")

@@ -278,7 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsContainer.appendChild(div);
       });
     } else if(data.error) {
-      resultsContainer.innerHTML=`<div class="result-step fail">❌ ${data.error}</div>`;
+      const tbHtml = data.traceback ? `<pre style="font-family:monospace;font-size:11px;background:#1e1e1e;color:#f87171;padding:8px;border-radius:4px;overflow-x:auto;direction:ltr;text-align:left;margin-top:6px">${escapeHtml(data.traceback)}</pre>` : '';
+      resultsContainer.innerHTML=`<div class="result-step fail">❌ ${escapeHtml(data.error)}${tbHtml}</div>`;
     }
   }
   $('btn-close-results').onclick = () => { resultsCard.style.display='none'; };

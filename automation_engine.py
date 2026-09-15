@@ -820,9 +820,13 @@ def execute_step(cdp: CDP, step: dict, context: dict) -> dict:
     handler = ACTIONS.get(action)
     if not handler:
         raise AgentError(f"عملیات ناشناخته: {action}")
-    result = handler(cdp, step, context)
-    result["status"] = "success"
-    return result
+    try:
+        result = handler(cdp, step, context)
+        result["status"] = "success"
+        return result
+    except Exception as exc:
+        log(f"❌ خطا در اجرا گام ({action}): {exc}")
+        raise
 
 
 def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
