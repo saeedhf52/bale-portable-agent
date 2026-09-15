@@ -67,6 +67,8 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 | `extract_text` | `selector`, `attribute`, `store_as` | استخراج متن یک عنصر |
 | `extract_list` | `selector`, `attribute`, `store_as` | استخراج لیست از چند عنصر |
 | `crawl_links` | `selector`, `store_as` | جمع‌آوری لینک‌های صفحه |
+| `scrape_table` | `table_selector`, `include_hidden`, `store_as` | استخراج تک‌صفحه جدول (خودکار/دستی) |
+| `scrape_table_pages` | `max_pages`, `table_selector`, `next_selector`, `wait`, `store_as` | پیمایش و استخراج جدول در چند صفحه |
 | `screenshot` | — | ذخیره اسکرین‌شات |
 
 ### منطق و کنترل

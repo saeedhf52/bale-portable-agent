@@ -501,6 +501,247 @@ def _auto_login(cdp, step, ctx):
     return {"message": " | ".join(results), "login_info": info}
 
 
+def _scrape_table(cdp, step, ctx):
+    """Smart table detection and data extraction from current page."""
+    table_sel = step.get("table_selector", "")
+    include_hidden = step.get("include_hidden", False)
+    store = step.get("store_as", "table_data")
+
+    js = f"""(() => {{
+        const tSel = {_js_q(table_sel)};
+        const includeHidden = {json.dumps(include_hidden)};
+
+        // ── Find table element ──
+        function findTable() {{
+            if (tSel) {{
+                const el = document.querySelector(tSel);
+                if (el) return el.tagName === 'TABLE' ? el : el.querySelector('table');
+            }}
+            // Kendo Grid
+            let t = document.querySelector('.k-grid table[role="treegrid"], .k-grid table[role="grid"]');
+            if (t) return t;
+            // Bootstrap / generic data table
+            t = document.querySelector('table.table, table.dataTable, table.display, table[id]');
+            if (t) return t;
+            // Any visible table with >1 row
+            const all = document.querySelectorAll('table');
+            for (const tb of all) {{
+                if (tb.rows.length > 1 && tb.offsetParent !== null) return tb;
+            }}
+            return null;
+        }}
+
+        // ── Find header row ──
+        function getHeaders(table) {{
+            // Try thead first
+            let hdrRow = table.querySelector('thead tr');
+            // Kendo separate header table
+            if (!hdrRow) {{
+                const grid = table.closest('.k-grid');
+                if (grid) hdrRow = grid.querySelector('.k-grid-header thead tr');
+            }}
+            if (!hdrRow) return [];
+            const cols = [];
+            const cells = hdrRow.querySelectorAll('th');
+            cells.forEach((th, i) => {{
+                const vis = includeHidden || (th.style.display !== 'none' && th.offsetParent !== null);
+                cols.push({{
+                    index: i,
+                    text: th.textContent.trim().replace(/\\s+/g, ' '),
+                    field: th.getAttribute('data-field') || '',
+                    visible: vis,
+                }});
+            }});
+            return cols;
+        }}
+
+        // ── Extract rows ──
+        function getRows(table, headers) {{
+            const visIdx = new Set(headers.filter(h => h.visible).map(h => h.index));
+            const body = table.querySelector('tbody') || table;
+            const dataRows = [];
+            body.querySelectorAll('tr').forEach(tr => {{
+                // Skip group/header rows
+                if (tr.classList.contains('k-grouping-row')) return;
+                if (tr.querySelector('th')) return;
+                // Must be data row
+                const cells = tr.querySelectorAll('td');
+                if (cells.length === 0) return;
+                const row = {{}};
+                let hasData = false;
+                cells.forEach((td, i) => {{
+                    if (!includeHidden && !visIdx.has(i)) return;
+                    const hdr = headers.find(h => h.index === i);
+                    const key = (hdr && (hdr.field || hdr.text)) || ('col_' + i);
+                    if (!key || key === '\\u00a0' || key === '') return;
+                    let val = td.textContent.trim().replace(/\\s+/g, ' ');
+                    // Try to get link href
+                    const link = td.querySelector('a[href]');
+                    if (link) {{
+                        row[key + '_link'] = link.href;
+                    }}
+                    if (val) hasData = true;
+                    row[key] = val;
+                }});
+                if (hasData) dataRows.push(row);
+            }});
+            return dataRows;
+        }}
+
+        // ── Pagination info ──
+        function getPaginationInfo() {{
+            // Kendo pager
+            let pager = document.querySelector('.k-pager-wrap .k-pager-info');
+            const info = {{ current_page: 1, total_pages: 1, total_items: 0,
+                next_selector: null, prev_selector: null }};
+            // Custom: #TotalPages / #TotalLetters
+            const tp = document.querySelector('#TotalPages');
+            const tl = document.querySelector('#TotalLetters');
+            if (tp) info.total_pages = parseInt(tp.textContent) || 1;
+            if (tl) info.total_items = parseInt(tl.textContent) || 0;
+            // Kendo page numbers
+            const selected = document.querySelector('.k-pager-numbers .k-state-selected, .k-pager-numbers li.k-current-page + li .k-state-selected');
+            if (selected) info.current_page = parseInt(selected.textContent) || 1;
+            // Next button selectors (priority order)
+            const nextSels = [
+                '#GoNextPage:not([disabled])',
+                '.k-pager-nav .k-i-arrow-60-right',
+                'a.k-pager-nav[data-page]:not(.k-state-disabled)',
+                '.k-pager-nav:not(.k-state-disabled) .k-i-arrow-60-right',
+                'a[title*="بعدی"]:not([disabled])',
+                'a[title*="next" i]:not([disabled])',
+                '.pagination .next:not(.disabled) a',
+                'li.next:not(.disabled) a',
+                'a.next-page', 'button.next-page',
+            ];
+            for (const s of nextSels) {{
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null) {{
+                    info.next_selector = s;
+                    break;
+                }}
+            }}
+            const prevSels = [
+                '#GoPrevPage:not([disabled])',
+                '.k-pager-nav:not(.k-state-disabled) .k-i-arrow-60-left',
+            ];
+            for (const s of prevSels) {{
+                const el = document.querySelector(s);
+                if (el && el.offsetParent !== null) {{
+                    info.prev_selector = s;
+                    break;
+                }}
+            }}
+            return info;
+        }}
+
+        const table = findTable();
+        if (!table) return {{ error: 'جدولی در صفحه یافت نشد.', rows: [], headers: [], pagination: {{}} }};
+        const headers = getHeaders(table);
+        const rows = getRows(table, headers);
+        const pagination = getPaginationInfo();
+        return {{
+            headers: headers.filter(h => h.visible).map(h => h.field || h.text),
+            rows: rows,
+            row_count: rows.length,
+            pagination: pagination,
+        }};
+    }})()"""
+
+    result = cdp.evaluate(js)
+    if not result or result.get("error"):
+        raise AgentError(result.get("error", "خطا در استخراج جدول"))
+
+    ctx[store] = result
+    return {"result": result, "message": f"جدول استخراج شد: {result.get('row_count', 0)} ردیف — صفحه {result.get('pagination', {}).get('current_page', '?')} از {result.get('pagination', {}).get('total_pages', '?')}"}
+
+
+def _scrape_table_pages(cdp, step, ctx):
+    """Scrape table data across multiple pages with auto-pagination."""
+    max_pages = int(step.get("max_pages", 1))
+    table_sel = step.get("table_selector", "")
+    next_sel = step.get("next_selector", "")
+    wait = float(step.get("wait", 2))
+    include_hidden = step.get("include_hidden", False)
+    store = step.get("store_as", "table_all_pages")
+
+    all_rows = []
+    headers = []
+    pages_scraped = 0
+
+    for page_num in range(1, max_pages + 1):
+        log(f"📊 استخراج جدول — صفحه {page_num}/{max_pages}")
+
+        # Scrape current page
+        page_result = _scrape_table(cdp, {
+            "table_selector": table_sel,
+            "include_hidden": include_hidden,
+            "store_as": "_page_data",
+        }, ctx)
+
+        page_data = ctx.get("_page_data", {})
+        rows = page_data.get("rows", [])
+        if not headers and page_data.get("headers"):
+            headers = page_data["headers"]
+
+        # Tag rows with page number
+        for row in rows:
+            row["_page"] = page_num
+        all_rows.extend(rows)
+        pages_scraped += 1
+
+        if page_num >= max_pages:
+            break
+
+        # Find and click next page button
+        pagination = page_data.get("pagination", {})
+        actual_next = next_sel or pagination.get("next_selector", "")
+
+        if not actual_next:
+            log("⚠️ دکمه صفحه بعد یافت نشد — پایان پیمایش.")
+            break
+
+        # Check if next button exists and is clickable
+        can_click = cdp.evaluate(f"""(() => {{
+            const el = document.querySelector({_js_q(actual_next)});
+            if (!el) return false;
+            if (el.disabled || el.classList.contains('k-state-disabled') || el.getAttribute('disabled') !== null) return false;
+            if (el.offsetParent === null) return false;
+            return true;
+        }})()""")
+
+        if not can_click:
+            log("⚠️ دکمه صفحه بعد غیرفعال — پایان پیمایش.")
+            break
+
+        # Click next
+        _click(cdp, {"selector": actual_next, "wait": wait}, ctx)
+        time.sleep(0.5)
+
+        # Wait for table to refresh (content change)
+        time.sleep(wait)
+
+    # Save output file
+    out_dir = ROOT / "output"
+    out_dir.mkdir(exist_ok=True)
+    fname = f"table_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    out_path = out_dir / fname
+    output = {
+        "headers": headers,
+        "total_rows": len(all_rows),
+        "pages_scraped": pages_scraped,
+        "rows": all_rows,
+        "scraped_at": dt.datetime.now().isoformat(),
+    }
+    out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    ctx[store] = output
+    return {
+        "result": {"total_rows": len(all_rows), "pages_scraped": pages_scraped, "file": fname, "headers": headers},
+        "message": f"جدول استخراج شد: {len(all_rows)} ردیف از {pages_scraped} صفحه → {fname}",
+    }
+
+
 def _bale_export(cdp, step, ctx):
     from bale_agent import collect_rows, collect_message, save_report, TEHRAN
 
@@ -550,6 +791,8 @@ ACTIONS = {
     "conditional":      _conditional,
     "detect_login":     _detect_login,
     "auto_login":       _auto_login,
+    "scrape_table":     _scrape_table,
+    "scrape_table_pages": _scrape_table_pages,
     "bale_export":      _bale_export,
 }
 
@@ -686,6 +929,13 @@ TEMPLATES = {
             {"action": "type", "selector": "#username", "text": "{{user}}"},
             {"action": "type_human", "selector": "#password", "text": "{{pass}}", "char_delay": 0.1},
             {"action": "click", "selector": "button[type=submit]", "wait": 2},
+        ]
+    },
+    "scrape_cartable": {
+        "name": "📊 استخراج و پیمایش جدول کارتابل",
+        "description": "تشخیص هوشمند جدول، استخراج داده‌ها و پیمایش بین صفحات (Kendo Grid / کارتابل)",
+        "steps": [
+            {"action": "scrape_table_pages", "max_pages": 3, "wait": 2, "include_hidden": False, "store_as": "table_data"},
         ]
     },
     "bale_export": {

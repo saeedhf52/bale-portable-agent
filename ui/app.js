@@ -61,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
     bale_export:      { label:'📨 استخراج بله',       fields:[{key:'count',label:'تعداد مخاطب',ph:'10',type:'number'},{key:'timeout',label:'تایم‌اوت (ث)',ph:'20',type:'number'}] },
     detect_login:     { label:'🔍 شناسایی فرم ورود',  fields:[{key:'store_as',label:'ذخیره در متغیر',ph:'login_info'}] },
     auto_login:       { label:'🔐 ورود هوشمند',       fields:[{key:'url',label:'آدرس صفحه ورود',ph:'https://example.com/login'},{key:'username',label:'نام کاربری',ph:'admin'},{key:'password',label:'رمز عبور',ph:''},{key:'human_on_captcha',label:'انتظار کپچا',ph:'true'},{key:'timeout',label:'حداکثر (ث)',ph:'30',type:'number'},{key:'success_selector',label:'سلکتور موفقیت (اختیاری)',ph:'.dashboard'}] },
+    scrape_table:     { label:'📊 استخراج تک صفحه جدول', fields:[{key:'table_selector',label:'سلکتور جدول (خالی=خودکار)',ph:'#LetterIndex'},{key:'include_hidden',label:'شامل ستون پنهان',ph:'false'},{key:'store_as',label:'نام متغیر',ph:'table_data'}] },
+    scrape_table_pages:{ label:'🔄 پیمایش و استخراج جدول', fields:[{key:'max_pages',label:'تعداد صفحات',ph:'3',type:'number'},{key:'table_selector',label:'سلکتور جدول (خالی=خودکار)',ph:''},{key:'next_selector',label:'سلکتور دکمه بعد (خالی=خودکار)',ph:'#GoNextPage'},{key:'wait',label:'مکس بین صفحات (ث)',ph:'2',type:'number'},{key:'store_as',label:'نام متغیر',ph:'table_all_pages'}] },
   };
 
   let currentSteps = [];
