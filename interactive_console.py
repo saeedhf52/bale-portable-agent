@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 import automation_db as db
 import admin_auth
 from agent_core import AgentCore
-from bale_agent import probe_endpoint, endpoint_targets, select_target, CDP
+from bale_agent import probe_endpoint, endpoint_targets, select_target, CDP, ensure_browser_ready
 from macro_recorder import MacroRecorder
 
 try:
@@ -156,6 +156,10 @@ class InteractiveConsole:
 
                 elif cmd == "record":
                     try:
+                        print("🔄 در حال بررسی و آماده‌سازی مرورگر...")
+                        if not ensure_browser_ready(9222):
+                            print(f"{RED}❌ مرورگر راه‌اندازی نشد.{RESET}")
+                            continue
                         targets = endpoint_targets(9222)
                         target = select_target(targets)
                         cdp = CDP(target["webSocketDebuggerUrl"])

@@ -153,6 +153,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         # ── Macro Recorder Endpoints ──
         elif path == "/api/recorder/start":
             try:
+                ensure_browser_ready(9222)
                 targets = endpoint_targets(9222)
                 target = select_target(targets)
                 cdp = CDP(target["webSocketDebuggerUrl"])
