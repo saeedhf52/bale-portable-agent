@@ -29,7 +29,14 @@ class AgentError(Exception):
 
 
 def log(message):
-    print(message, flush=True)
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        try:
+            encoding = sys.stdout.encoding or "utf-8"
+            print(str(message).encode(encoding, errors="replace").decode(encoding, errors="replace"), flush=True)
+        except Exception:
+            pass
 
 
 def local_url(url, schemes):
