@@ -41,6 +41,24 @@ def init_db():
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            -- RAG & Memory extension
+            CREATE TABLE IF NOT EXISTS skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                kind TEXT NOT NULL, -- 'recipe' or 'python'
+                description TEXT,
+                content TEXT NOT NULL,
+                installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tags TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         # Insert default Bale Export automation if none exists
         cursor = conn.cursor()
@@ -102,6 +120,24 @@ def list_logs(limit: int = 50):
         rows = conn.execute(
             "SELECT l.*, a.name as automation_name FROM logs l LEFT JOIN automations a ON l.automation_id = a.id ORDER BY l.executed_at DESC LIMIT ?",
             (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_knowledge(source: str, content: str, tags: str = "") -> int:
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO knowledge (source, content, tags) VALUES (?, ?, ?)",
+            (source, content, tags)
+        )
+        return cursor.lastrowid
+
+
+def search_knowledge(query: str, limit: int = 10) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM knowledge WHERE content LIKE ? OR tags LIKE ? ORDER BY created_at DESC LIMIT ?",
+            (f"%{query}%", f"%{query}%", limit)
         ).fetchall()
         return [dict(r) for r in rows]
 
