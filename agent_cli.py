@@ -8,6 +8,7 @@ Usage:
   python agent_cli.py mcp           # Run MCP stdio server
   python agent_cli.py ask <prompt>  # Search RAG knowledge
   python agent_cli.py set-bot-token <token>
+  python agent_cli.py set-llm <provider> [--key API_KEY] [--model MODEL] [--url BASE_URL]
   python agent_cli.py tunnel-encode <json_file_or_string>
   python agent_cli.py tunnel-decode <frame1> [<frame2> ...]
 """
@@ -55,6 +56,13 @@ def main():
     p_tok = sub.add_parser("set-bot-token", help="Set Bale Bot API Token")
     p_tok.add_argument("token", help="Bale Bot Token string")
 
+    # set-llm
+    p_llm = sub.add_parser("set-llm", help="Configure AI Model provider & credentials")
+    p_llm.add_argument("provider", choices=["claude", "openai", "ollama", "custom", "auto"], help="LLM Provider")
+    p_llm.add_argument("--key", default="", help="API Key")
+    p_llm.add_argument("--model", default="", help="Model name")
+    p_llm.add_argument("--url", default="", help="Base URL for custom/ollama endpoint")
+
     # tunnel-encode
     p_enc = sub.add_parser("tunnel-encode", help="Encode payload into Bale text frames")
     p_enc.add_argument("data", help="JSON string or path to JSON file")
@@ -100,6 +108,16 @@ def main():
     elif args.command == "set-bot-token":
         db.set_setting("bot_token", args.token)
         print(f"✅ Bale Bot Token saved.")
+
+    elif args.command == "set-llm":
+        db.set_setting("llm_provider", args.provider)
+        if args.key:
+            db.set_setting("llm_api_key", args.key)
+        if args.model:
+            db.set_setting("llm_model", args.model)
+        if args.url:
+            db.set_setting("llm_base_url", args.url)
+        print(f"✅ LLM provider configured: {args.provider}")
 
     elif args.command == "tunnel-encode":
         data = args.data
