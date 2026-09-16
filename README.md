@@ -71,13 +71,15 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 | `scrape_table_pages` | `max_pages`, `table_selector`, `next_selector`, `wait`, `store_as` | پیمایش و استخراج جدول در چند صفحه |
 | `screenshot` | — | ذخیره اسکرین‌شات |
 
-### منطق و کنترل
+### منطق و کنترل جریان
 | عملیات | پارامترها | کاربرد |
 |--------|----------|--------|
 | `set_variable` | `key`, `value` | تعریف متغیر داینامیک |
 | `evaluate_js` | `code`, `store_as` | اجرای JavaScript و ذخیره نتیجه |
-| `loop` | `count`, `steps` | تکرار زیرگام‌ها (`{{loop_index}}`) |
-| `conditional` | `selector`, `then_steps`, `else_steps` | اجرای شرطی |
+| `loop` | `count`, `steps`, `break_if`, `continue_if` | تکرار زیرگام‌ها (`{{loop_index}}`) با امکان توقف/رد شدن شرطی |
+| `conditional` | `selector`, `conditions`, `logic`, `negate`, `then_steps`, `else_steps` | اجرای شرطی پیشرفته (۱۰ نوع شرط، AND/OR، معکوس) |
+| `while_loop` | `conditions`, `selector`, `logic`, `max_iterations`, `steps` | حلقه شرطی — تا زمانی که شرط برقرار است تکرار می‌کند |
+| `try_catch` | `try_steps`, `catch_steps`, `finally_steps` | مدیریت خطا — در صورت بروز مشکل، مسیر جایگزین اجرا می‌شود |
 | `bale_export` | `count`, `timeout` | استخراج پیام‌های بله |
 
 ### 🔐 ورود هوشمند
@@ -85,6 +87,75 @@ make.cmd                 :: بسته‌بندی ZIP قابل‌حمل
 |--------|----------|--------|
 | `auto_login` | `url`, `username`, `password`, `human_on_captcha`, `timeout`, `success_selector` | تشخیص خودکار فرم ورود + پر کردن + مدیریت کپچا + تأیید |
 | `detect_login` | `store_as` | شناسایی فرم ورود بدون وارد کردن اطلاعات |
+
+---
+
+## 🧠 سیستم شرط‌گذاری هوشمند (Flowchart Engine)
+
+### ۱۰ نوع شرط پشتیبانی‌شده
+| نوع شرط | پارامترها | عملکرد |
+|---------|----------|--------|
+| `selector_exists` | `selector` | عنصر CSS در صفحه وجود دارد |
+| `selector_visible` | `selector` | عنصر CSS قابل مشاهده است |
+| `selector_gone` | `selector` | عنصر CSS در صفحه وجود ندارد |
+| `text_contains` | `selector`, `value` | متن عنصر شامل مقدار مشخص‌شده است |
+| `text_equals` | `selector`, `value` | متن عنصر دقیقاً برابر مقدار مشخص‌شده است |
+| `url_contains` | `value` | آدرس صفحه شامل متن مشخص‌شده است |
+| `url_equals` | `value` | آدرس صفحه دقیقاً برابر مقدار است |
+| `variable_equals` | `variable`, `value` | مقدار متغیر برابر value است |
+| `variable_set` | `variable` | متغیر مقداردهی شده و خالی نیست |
+| `js_expression` | `code` | عبارت JavaScript نتیجه truthy برمی‌گرداند |
+
+### نمونه شرط ترکیبی پیشرفته
+```json
+{
+  "action": "conditional",
+  "conditions": [
+    {"type": "url_contains", "value": "/dashboard"},
+    {"type": "selector_exists", "selector": ".welcome-msg"}
+  ],
+  "logic": "and",
+  "negate": false,
+  "then_steps": [
+    {"action": "extract_text", "selector": "h1", "store_as": "title"}
+  ],
+  "else_steps": [
+    {"action": "screenshot"},
+    {"action": "wait_for_human", "prompt": "ورود ناموفق بود.", "success_selector": ".dashboard", "timeout": 120}
+  ]
+}
+```
+
+### نمونه حلقه شرطی (while)
+```json
+{
+  "action": "while_loop",
+  "conditions": [{"type": "selector_exists", "selector": ".load-more:not([disabled])"}],
+  "max_iterations": 50,
+  "steps": [
+    {"action": "click", "selector": ".load-more", "wait": 2},
+    {"action": "extract_list", "selector": ".item", "store_as": "items"}
+  ]
+}
+```
+
+### نمونه مدیریت خطا (try/catch)
+```json
+{
+  "action": "try_catch",
+  "try_steps": [
+    {"action": "click", "selector": "#submit", "wait": 2},
+    {"action": "wait_for_element", "selector": ".success", "timeout": 10}
+  ],
+  "catch_steps": [
+    {"action": "screenshot"},
+    {"action": "wait_for_human", "prompt": "خطا رخ داد.", "success_selector": "body", "timeout": 300}
+  ],
+  "finally_steps": [
+    {"action": "screenshot"}
+  ]
+}
+```
 
 ---
 

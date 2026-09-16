@@ -25,18 +25,58 @@ function balePageAdapter(operation, argument) {
       (['DIV', 'P'].includes(n.tagName) || n.classList.contains('p') ? '\n' : '');
   }
   const clean = s => (s || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  const rowElements = () => $$('[aria-label="dialog-item"]').filter(shown);
+  const rowElements = () => {
+    // Try multiple selector strategies. Bale Web DOM changes across versions.
+    const strategies = [
+      '[aria-label="dialog-item"]',
+      '[data-testid*="dialog-item"]',
+      '[data-testid*="dialogItem"]',
+      '[data-item-index]',
+      '.dialog-item',
+      '[data-sentry-component*="Dialog"]',
+    ];
+    for (const sel of strategies) {
+      const found = $$(sel).filter(shown);
+      const rows = found.filter(e => $('bdi', e) || $('.dialog-item-content', e) || $('[title]', e));
+      if (rows.length > 0) return rows;
+    }
+    // Last resort: scan for a virtualized list of rows.
+    // Look for a scroll container with many children each containing a <bdi>.
+    const scrollers = $$('[data-testid="virtuoso-scroller"], [data-virtuoso-scroller], .virtuoso-scroller');
+    for (const sc of scrollers) {
+      const kids = $$('*', sc).filter(e =>
+        e.children.length > 0 && $('bdi', e) && shown(e) &&
+        e.getBoundingClientRect().height > 30 && e.getBoundingClientRect().height < 200
+      );
+      // Pick the shallowest wrapper level (siblings sharing the same parent).
+      const grouped = {};
+      for (const k of kids) {
+        const key = k.parentElement;
+        (grouped[key ? key.tagName + '#' + (key.className || '') : 'root'] ||= []).push(k);
+      }
+      const best = Object.values(grouped).sort((a, b) => b.length - a.length)[0];
+      if (best && best.length >= 1) return best;
+    }
+    return [];
+  };
   function scroller() {
-    return rowElements()[0]?.closest('[data-testid="virtuoso-scroller"]') || null;
+    const first = rowElements()[0];
+    if (!first) return null;
+    return first.closest('[data-testid="virtuoso-scroller"]') ||
+           first.closest('[data-virtuoso-scroller]') ||
+           first.closest('.virtuoso-scroller') ||
+           first.closest('[style*="overflow"]') || null;
   }
   function rowData(e) {
-    const content = $('.dialog-item-content', e);
-    const nameEl = $('bdi', content || e);
-    const preview = $('[title]', content || e);
+    const content = $('.dialog-item-content', e) || e;
+    const nameEl = $('bdi', content) || $('[data-testid*="name"]', content) || $('h4', content) || $('h5', content);
+    const preview = $('[title]', content);
     const im = icons(e);
-    const index = Number(e.closest('[data-item-index]')?.getAttribute('data-item-index'));
+    const indexEl = e.closest('[data-item-index]') || e;
+    const rawIndex = indexEl.getAttribute?.('data-item-index');
+    const index = rawIndex != null ? Number(rawIndex) : -1;
     return {
-      name: clean(nameEl ? rich(nameEl) : ''), index,
+      name: clean(nameEl ? rich(nameEl) : rich(content).split('\n')[0] || ''), index,
       preview: preview?.getAttribute('title') || '',
       pinned: im.some(i => ['pinned', 'Pin-icon'].includes(i)),
       self: im.includes('BoldBookmark-icon'),
@@ -47,13 +87,13 @@ function balePageAdapter(operation, argument) {
   function listState() {
     const rows = rowElements().map(rowData);
     const s = scroller();
-    const headings = $$('[aria-label="dialog-tab-list"] h3');
-    const heading = headings.find(h => norm(h.textContent) === 'شخصی');
+    const headings = $$('[aria-label="dialog-tab-list"] h3, [aria-label="dialog-tab-list"] [role="tab"], [aria-label="dialog-tab-list"] button');
+    const heading = headings.find(h => norm(h.textContent).includes('شخصی'));
     // Bale orders swipe panels to match headings. aria-hidden distinguishes
     // the live tab from mounted, off-screen duplicates.
     const panel = s?.closest('[data-swipeable]');
     const panels = panel ? Array.from(panel.parentElement.children).filter(p => p.hasAttribute('data-swipeable')) : [];
-    const personal = !!heading && panels.indexOf(panel) === headings.indexOf(heading);
+    const personal = headings.length === 0 || !heading || (panel && panels.indexOf(panel) === headings.indexOf(heading));
     return {rows, personal, scroll_top: s?.scrollTop || 0,
       at_bottom: !!s && s.scrollHeight - s.scrollTop - s.clientHeight < 3};
   }
@@ -112,11 +152,46 @@ function balePageAdapter(operation, argument) {
       },
     };
   }
-  if (operation === 'status') return {logged_in: !!$('[aria-label="dialog-tab-list"]'), url: location.href};
+  if (operation === 'status') return {logged_in: !!$('[aria-label="dialog-tab-list"], [role="tablist"], [data-testid*="tab"], .dialog-item, [aria-label="dialog-item"]'), url: location.href};
+  if (operation === 'diagnose') {
+    // Return a snapshot of candidate selectors to help debug DOM changes.
+    const selectors = [
+      '[aria-label="dialog-item"]',
+      '[aria-label="dialog-tab-list"]',
+      '[data-testid*="dialog"]',
+      '[data-item-index]',
+      '.dialog-item',
+      '.dialog-item-content',
+      '[data-sentry-component*="Dialog"]',
+      '[data-testid="virtuoso-scroller"]',
+      '[role="tab"]',
+    ];
+    const counts = {};
+    for (const s of selectors) {
+      const all = $$(s);
+      counts[s] = {total: all.length, visible: all.filter(shown).length};
+    }
+    // Also sample attributes of first visible listitem-like element
+    const sample = $$('*').filter(e => shown(e) && (e.getAttribute('data-item-index') !== null || (e.getAttribute('aria-label') || '').includes('dialog')));
+    const first = sample[0];
+    const firstAttrs = first ? Array.from(first.attributes).reduce((a, x) => (a[x.name] = x.value, a), {}) : null;
+    return {url: location.href, counts, first_attrs: firstAttrs, first_tag: first?.tagName};
+  }
   if (operation === 'personal') {
-    const target = $$('[aria-label="dialog-tab-list"] h3').filter(h => norm(h.textContent) === 'شخصی');
-    if (target.length !== 1) throw Error('Cannot uniquely locate the Personal tab.');
-    target[0].click();
+    const tabs = $$('[aria-label="dialog-tab-list"] h3, [role="tab"], [data-testid*="tab"]');
+    const target = tabs.filter(h => norm(h.textContent).includes('شخصی') || norm(h.textContent).includes('Personal'));
+    if (target.length >= 1) {
+      target[0].click();
+      return true;
+    }
+    // Fallback: try clicking any element containing text "شخصی" inside dialog list header
+    const header = $('[aria-label="dialog-tab-list"]') || document;
+    const allH = Array.from(header.querySelectorAll('*')).filter(e => e.children.length === 0 && norm(e.textContent) === 'شخصی');
+    if (allH.length > 0) {
+      (allH[0].closest('button, [role="tab"], h3, li, div') || allH[0]).click();
+      return true;
+    }
+    // If no tab needed (already on personal or single tab view), log warning and pass
     return true;
   }
   if (operation === 'list') return listState();

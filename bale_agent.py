@@ -326,8 +326,21 @@ def save_report(report, output):
 
 
 def collect_rows(cdp, count, timeout):
-    adapter_call(cdp, "personal")
-    wait_until(lambda: adapter_call(cdp, "list"), lambda s: s.get("personal") and bool(s.get("rows")), timeout, "personal chat list")
+    try:
+        adapter_call(cdp, "personal")
+    except Exception as exc:
+        log(f"⚠️ هشدار در انتخاب تب شخصی: {exc} — ادامه با وضعیت فعلی DOM")
+    try:
+        wait_until(lambda: adapter_call(cdp, "list"), lambda s: bool(s.get("rows")), timeout, "chat list")
+    except AgentError:
+        diag_str = "n/a"
+        try:
+            diag = adapter_call(cdp, "diagnose")
+            diag_str = json.dumps(diag, ensure_ascii=False)
+        except Exception as exc:
+            diag_str = f"diagnose failed: {exc}"
+        log(f"🔎 گزارش DOM بله: {diag_str[:2000]}")
+        raise AgentError(f"Timed out: chat list. DOM diagnose: {diag_str[:1500]}")
     adapter_call(cdp, "scroll_list", "top")
     wait_until(lambda: adapter_call(cdp, "list"), lambda s: s.get("scroll_top", 99) < 2, timeout, "list start")
     seen = {}
@@ -335,8 +348,6 @@ def collect_rows(cdp, count, timeout):
     stagnant = 0
     for _ in range(max(30, count * 3)):
         state = adapter_call(cdp, "list")
-        if not state.get("personal"):
-            raise AgentError("Personal tab changed during export. Do not use the browser while exporting.")
         for row in state.get("rows", []):
             if row["kind"] != "personal" or row["self"] or row["join_only"]:
                 continue

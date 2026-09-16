@@ -296,29 +296,232 @@ def _set_variable(cdp, step, ctx):
 
 
 def _loop(cdp, step, ctx):
-    """Run sub-steps multiple times."""
+    """Run sub-steps multiple times, with optional break_if / continue_if conditions."""
     count = _to_int(step.get("count"), 1)
     sub_steps = step.get("steps", [])
+    break_if = step.get("break_if", "")
+    continue_if = step.get("continue_if", "")
     results = []
     for i in range(count):
         ctx["loop_index"] = i
+        # Break condition: stop loop if element exists
+        if break_if and _eval_condition(cdp, {"type": "selector_exists", "selector": break_if}, ctx):
+            log(f"🔁 حلقه در تکرار {i} متوقف شد (break_if: {break_if})")
+            break
+        # Continue condition: skip iteration if element exists
+        if continue_if and _eval_condition(cdp, {"type": "selector_exists", "selector": continue_if}, ctx):
+            log(f"🔁 تکرار {i} رد شد (continue_if: {continue_if})")
+            continue
         for sub in sub_steps:
             r = execute_step(cdp, sub, ctx)
             results.append(r)
     return {"message": f"حلقه {count} بار اجرا شد ({len(results)} گام)", "sub_results": results}
 
 
+def _eval_condition(cdp, cond, ctx):
+    """Evaluate a single condition dict and return bool.
+
+    Supported condition types:
+      selector_exists  — element found in DOM
+      selector_visible — element visible on page
+      selector_gone    — element NOT in DOM
+      text_contains    — element text contains value
+      text_equals      — element text equals value
+      url_contains     — current URL contains value
+      url_equals       — current URL equals value
+      variable_equals  — context variable equals value
+      variable_set     — context variable is truthy
+      js_expression    — arbitrary JS returns truthy
+    """
+    ctype = cond.get("type", "selector_exists")
+    sel = cond.get("selector", "")
+    value = cond.get("value", "")
+    var_key = cond.get("variable", "")
+
+    # Replace {{var}} in selector and value
+    for k, v in ctx.items():
+        sel = sel.replace("{{" + str(k) + "}}", str(v))
+        value = value.replace("{{" + str(k) + "}}", str(v))
+
+    if ctype == "selector_exists":
+        return bool(cdp.evaluate(f"!!document.querySelector({_js_q(sel)})"))
+
+    elif ctype == "selector_visible":
+        return bool(cdp.evaluate(f"""(() => {{
+            const el = document.querySelector({_js_q(sel)});
+            return el && el.offsetParent !== null;
+        }})()"""))
+
+    elif ctype == "selector_gone":
+        return not bool(cdp.evaluate(f"!!document.querySelector({_js_q(sel)})"))
+
+    elif ctype == "text_contains":
+        text = cdp.evaluate(f"""(() => {{
+            const el = document.querySelector({_js_q(sel)});
+            return el ? el.textContent.trim() : '';
+        }})()""") or ""
+        return value.lower() in text.lower()
+
+    elif ctype == "text_equals":
+        text = cdp.evaluate(f"""(() => {{
+            const el = document.querySelector({_js_q(sel)});
+            return el ? el.textContent.trim() : '';
+        }})()""") or ""
+        return text.strip() == value.strip()
+
+    elif ctype == "url_contains":
+        url = cdp.evaluate("window.location.href") or ""
+        return value in url
+
+    elif ctype == "url_equals":
+        url = cdp.evaluate("window.location.href") or ""
+        return url.strip() == value.strip()
+
+    elif ctype == "variable_equals":
+        return str(ctx.get(var_key, "")) == value
+
+    elif ctype == "variable_set":
+        return bool(ctx.get(var_key))
+
+    elif ctype == "js_expression":
+        code = cond.get("code", value)
+        return bool(cdp.evaluate(code))
+
+    else:
+        log(f"⚠️ نوع شرط ناشناخته: {ctype}")
+        return False
+
+
+def _eval_conditions(cdp, conditions, logic, ctx):
+    """Evaluate a list of conditions with AND/OR logic."""
+    if not conditions:
+        return True
+    results = [_eval_condition(cdp, c, ctx) for c in conditions]
+    if logic == "or":
+        return any(results)
+    return all(results)  # default: and
+
+
 def _conditional(cdp, step, ctx):
-    """Run sub-steps only if a selector exists."""
+    """Smart conditional with multiple condition types, operators, and nested branches.
+
+    Simple mode (backward compatible):
+      {"action": "conditional", "selector": ".error", "then_steps": [...], "else_steps": [...]}
+
+    Advanced mode:
+      {"action": "conditional",
+       "conditions": [
+         {"type": "selector_exists", "selector": ".error-msg"},
+         {"type": "url_contains", "value": "/dashboard"}
+       ],
+       "logic": "and",  // "and" | "or"
+       "negate": false,  // flip result
+       "then_steps": [...],
+       "else_steps": [...]}
+    """
+    # Simple mode: single selector
     sel = step.get("selector", "")
-    exists = cdp.evaluate(f"!!document.querySelector({_js_q(sel)})")
-    sub_steps = step.get("then_steps" if exists else "else_steps", [])
+    conditions = step.get("conditions", [])
+
+    if not conditions and sel:
+        # Backward-compatible: single selector_exists
+        conditions = [{"type": "selector_exists", "selector": sel}]
+
+    logic = step.get("logic", "and")
+    negate = step.get("negate", False)
+
+    result = _eval_conditions(cdp, conditions, logic, ctx)
+    if negate:
+        result = not result
+
+    branch = "then" if result else "else"
+    sub_steps = step.get("then_steps" if result else "else_steps", [])
+
+    # Log condition evaluation
+    cond_desc = sel if sel else f"{len(conditions)} شرط ({logic})"
+    log(f"❓ شرط [{cond_desc}]: نتیجه={'✅ صحیح' if result else '❌ ناصحیح'} → شاخه {branch}")
+
     results = []
     for sub in sub_steps:
         r = execute_step(cdp, sub, ctx)
         results.append(r)
-    branch = "then" if exists else "else"
-    return {"message": f"شرط ({sel}): شاخه {branch} اجرا شد.", "sub_results": results}
+    return {"message": f"شرط ({cond_desc}): شاخه {branch} اجرا شد.", "sub_results": results, "condition_result": result}
+
+
+def _while_loop(cdp, step, ctx):
+    """Loop while condition(s) remain true — smart while loop.
+
+    {"action": "while_loop",
+     "conditions": [{"type": "selector_exists", "selector": ".next-btn"}],
+     "logic": "and",
+     "max_iterations": 100,
+     "steps": [...]}
+    """
+    conditions = step.get("conditions", [])
+    sel = step.get("selector", "")
+    if not conditions and sel:
+        conditions = [{"type": "selector_exists", "selector": sel}]
+
+    logic = step.get("logic", "and")
+    max_iter = _to_int(step.get("max_iterations"), 100)
+    sub_steps = step.get("steps", [])
+    results = []
+    iteration = 0
+
+    while iteration < max_iter:
+        if not _eval_conditions(cdp, conditions, logic, ctx):
+            log(f"🔄 while_loop: شرط ناصحیح شد — پایان در تکرار {iteration}")
+            break
+        ctx["loop_index"] = iteration
+        for sub in sub_steps:
+            r = execute_step(cdp, sub, ctx)
+            results.append(r)
+        iteration += 1
+
+    return {"message": f"حلقه شرطی {iteration} بار اجرا شد ({len(results)} گام)", "sub_results": results}
+
+
+def _try_catch(cdp, step, ctx):
+    """Try-catch block for error handling in automation flow.
+
+    {"action": "try_catch",
+     "try_steps": [...],
+     "catch_steps": [...],
+     "finally_steps": [...]}
+    """
+    try_steps = step.get("try_steps", [])
+    catch_steps = step.get("catch_steps", [])
+    finally_steps = step.get("finally_steps", [])
+    results = []
+    error_occurred = False
+    error_msg = ""
+
+    try:
+        for sub in try_steps:
+            r = execute_step(cdp, sub, ctx)
+            results.append(r)
+    except Exception as exc:
+        error_occurred = True
+        error_msg = str(exc)
+        ctx["_error"] = error_msg
+        log(f"⚠️ try_catch: خطا رخ داد — {error_msg}")
+        for sub in catch_steps:
+            try:
+                r = execute_step(cdp, sub, ctx)
+                results.append(r)
+            except Exception as inner_exc:
+                log(f"❌ خطا در catch: {inner_exc}")
+
+    # Finally always runs
+    for sub in finally_steps:
+        try:
+            r = execute_step(cdp, sub, ctx)
+            results.append(r)
+        except Exception as fin_exc:
+            log(f"❌ خطا در finally: {fin_exc}")
+
+    status = "خطا (مدیریت شده)" if error_occurred else "موفق"
+    return {"message": f"try_catch: {status}", "sub_results": results, "error": error_msg if error_occurred else None}
 
 
 def _detect_login(cdp, step, ctx):
@@ -834,6 +1037,8 @@ ACTIONS = {
     "set_variable":     _set_variable,
     "loop":             _loop,
     "conditional":      _conditional,
+    "while_loop":       _while_loop,
+    "try_catch":        _try_catch,
     "detect_login":     _detect_login,
     "auto_login":       _auto_login,
     "scrape_table":     _scrape_table,
@@ -992,6 +1197,49 @@ TEMPLATES = {
         "description": "استخراج آخرین پیام از مخاطبان شخصی اخیر بله",
         "steps": [
             {"action": "bale_export", "count": 10, "timeout": 20},
+        ]
+    },
+    "smart_conditional": {
+        "name": "❓ فلوچارت هوشمند (شرط پیشرفته)",
+        "description": "بررسی وضعیت صفحه و اجرای مسیرهای متفاوت بر اساس شرایط مختلف",
+        "steps": [
+            {"action": "auto_login", "url": "https://example.com/login", "username": "", "password": "", "human_on_captcha": True, "timeout": 30},
+            {"action": "conditional", "conditions": [
+                {"type": "url_contains", "value": "/dashboard"},
+            ], "logic": "and", "then_steps": [
+                {"action": "extract_text", "selector": "h1", "store_as": "page_title"},
+            ], "else_steps": [
+                {"action": "screenshot"},
+                {"action": "wait_for_human", "prompt": "ورود ناموفق. لطفاً بررسی کنید.", "success_selector": ".dashboard", "timeout": 120},
+            ]},
+        ]
+    },
+    "while_pagination": {
+        "name": "🔄 پیمایش شرطی (while)",
+        "description": "تا زمانی که دکمه بعد وجود دارد صفحات را پیمایش و داده استخراج کن",
+        "steps": [
+            {"action": "navigate", "url": "https://example.com/list", "wait": 3},
+            {"action": "while_loop", "conditions": [
+                {"type": "selector_exists", "selector": ".next-page:not([disabled])"},
+            ], "max_iterations": 50, "steps": [
+                {"action": "extract_list", "selector": ".item", "store_as": "items"},
+                {"action": "click", "selector": ".next-page", "wait": 2},
+            ]},
+        ]
+    },
+    "safe_automation": {
+        "name": "🛡️ اتوماسیون امن (try/catch)",
+        "description": "اجرای اتوماسیون با مدیریت خطا — در صورت بروز مشکل، اسکرین‌شات گرفته و ادامه می‌دهد",
+        "steps": [
+            {"action": "try_catch", "try_steps": [
+                {"action": "auto_login", "url": "https://example.com/login", "username": "", "password": "", "timeout": 20},
+                {"action": "scrape_table_pages", "max_pages": 3, "wait": 2},
+            ], "catch_steps": [
+                {"action": "screenshot"},
+                {"action": "wait_for_human", "prompt": "خطا رخ داد. لطفاً وضعیت را بررسی کنید.", "success_selector": "body", "timeout": 300},
+            ], "finally_steps": [
+                {"action": "screenshot"},
+            ]},
         ]
     },
 }
