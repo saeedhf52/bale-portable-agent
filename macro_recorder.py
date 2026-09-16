@@ -1,8 +1,9 @@
-"""Live Browser Macro Recorder for Bale Portable Agent with Floating Web UI Toolbar.
+"""Live Browser Macro Recorder for Bale Portable Agent with Persistent Floating Web UI Toolbar.
 
 Injects an interactive floating control panel directly into the web page.
+Persists across page navigations/reloads using CDP Page.addScriptToEvaluateOnNewDocument.
 Allows step recording, visual element picking, variable extraction, conditional branching,
-and immediate saving.
+title prompt on stop, and direct saving to DB.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import json
 import time
 from typing import Any
 from bale_agent import CDP, log, AgentError
+import automation_db as db
 
 FLOATING_TOOLBAR_JS = """
 (function() {
@@ -17,9 +19,21 @@ FLOATING_TOOLBAR_JS = """
         return 'already_running';
     }
 
+    // Restore state from sessionStorage if page reloaded during recording
+    let savedSteps = [];
+    try {
+        savedSteps = JSON.parse(sessionStorage.getItem('__bale_recorded_steps') || '[]');
+    } catch(e){}
+
     window.__bale_macro_recorder_active = true;
-    window.__bale_recorded_steps = [];
+    window.__bale_recorded_steps = savedSteps;
     window.__bale_picking_var = false;
+
+    function saveState() {
+        try {
+            sessionStorage.setItem('__bale_recorded_steps', JSON.stringify(window.__bale_recorded_steps));
+        } catch(e){}
+    }
 
     function getSelector(el) {
         if (!el || el === document.body) return 'body';
@@ -65,10 +79,10 @@ FLOATING_TOOLBAR_JS = """
 
     toolbar.innerHTML = `
         <div style="display:flex; align-items:center; gap:6px;">
-            <span style="width:10px; height:10px; background:#f38ba8; border-radius:50%; display:inline-block; animation:pulse 1s infinite;"></span>
-            <span style="font-weight:bold; color:#f38ba8;">ضبط ماکرو (<span id="bale-step-count">0</span>)</span>
+            <span style="width:10px; height:10px; background:#f38ba8; border-radius:50%; display:inline-block;"></span>
+            <span style="font-weight:bold; color:#f38ba8;">ضبط ماکرو (<span id="bale-step-count">${savedSteps.length}</span>)</span>
         </div>
-        <button id="bale-btn-pick" style="background:#313244; color:#89b4fa; border:1px solid #45475a; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">📌 ذخیره در متغیر</button>
+        <button id="bale-btn-pick" style="background:#313244; color:#89b4fa; border:1px solid #45475a; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">📌 ذخیره متغیر</button>
         <button id="bale-btn-cond" style="background:#313244; color:#f9e2af; border:1px solid #45475a; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">⚡ شرط</button>
         <button id="bale-btn-stop" style="background:#a6e3a1; color:#11111b; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">⏹ ذخیره و پایان</button>
     `;
@@ -78,6 +92,7 @@ FLOATING_TOOLBAR_JS = """
     function updateCount() {
         let el = document.getElementById('bale-step-count');
         if (el) el.innerText = window.__bale_recorded_steps.length;
+        saveState();
     }
 
     // ── Click Recorder ──
@@ -156,8 +171,14 @@ FLOATING_TOOLBAR_JS = """
     });
 
     document.getElementById('bale-btn-stop').addEventListener('click', function() {
+        let title = prompt('عنوان اتوماسیون را وارد کنید:', 'اتوماسیون ضبط شده جدید');
+        if (!title) title = 'اتوماسیون ضبط شده جدید';
+
         window.__bale_macro_recorder_finished = true;
+        window.__bale_macro_title = title;
+        sessionStorage.removeItem('__bale_recorded_steps');
         toolbar.remove();
+        alert('✅ اتوماسیون "' + title + '" با موفقیت ثبت گردید.');
     });
 
     return 'started_with_ui';
@@ -170,8 +191,14 @@ STOP_SNIPPET = """
     let tb = document.getElementById('bale-recorder-toolbar');
     if (tb) tb.remove();
     let steps = window.__bale_recorded_steps || [];
+    let title = window.__bale_macro_title || 'اتوماسیون ضبط شده جدید';
+    try {
+        let sStr = sessionStorage.getItem('__bale_recorded_steps');
+        if (sStr && (!steps || steps.length === 0)) steps = JSON.parse(sStr);
+    } catch(e){}
+    sessionStorage.removeItem('__bale_recorded_steps');
     window.__bale_recorded_steps = [];
-    return JSON.stringify(steps);
+    return JSON.stringify({title: title, steps: steps});
 })()
 """
 
@@ -180,23 +207,44 @@ class MacroRecorder:
     def __init__(self, cdp: CDP):
         self.cdp = cdp
         self.recording = False
+        self.script_id = None
 
     def start(self) -> str:
+        # Enable persistent injection across new document / tab navigations
+        try:
+            res_inj = self.cdp.call("Page.addScriptToEvaluateOnNewDocument", {"source": FLOATING_TOOLBAR_JS})
+            self.script_id = res_inj.get("identifier")
+        except Exception:
+            pass
+
         res = self.cdp.evaluate(FLOATING_TOOLBAR_JS)
         self.recording = True
-        log("🔴 منوی شناور ماکرو رکوردر در مرورگر فعال شد. کنترل‌ها از داخل مرورگر یا کنسول امکان‌پذیر است.")
+        log("🔴 منوی شناور ماکرو رکوردر فعال شد (مقاوم در برابر لود صفحات جدید).")
         return res
 
-    def stop(self) -> list[dict]:
+    def stop(self, default_name: str = "") -> dict[str, Any]:
         if not self.recording:
-            return []
+            return {"title": default_name, "steps": []}
+        if self.script_id:
+            try:
+                self.cdp.call("Page.removeScriptToEvaluateOnNewDocument", {"identifier": self.script_id})
+            except Exception:
+                pass
         raw = self.cdp.evaluate(STOP_SNIPPET)
         self.recording = False
-        steps = json.loads(raw) if isinstance(raw, str) else (raw or [])
-        log(f"⏹ رکورد متوقف شد. {len(steps)} گام اتوماسیون هوشمند استخراج گردید.")
-        return steps
+        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        title = data.get("title") or default_name or "اتوماسیون ضبط شده جدید"
+        steps = data.get("steps", [])
+
+        if steps:
+            saved_id = db.save_automation(title, "اتوماسیون ضبط‌شده با ماکرو رکوردر", json.dumps(steps, ensure_ascii=False))
+            log(f"💾 اتوماسیون با عنوان '{title}' و شناسه #{saved_id} ذخیره گردید.")
+            return {"id": saved_id, "title": title, "steps": steps}
+
+        log("⏹ رکورد متوقف شد. گامی برای ذخیره وجود نداشت.")
+        return {"id": None, "title": title, "steps": []}
 
 
 # ---- self-check ----
 if __name__ == "__main__":
-    print("macro_recorder UI module loaded OK")
+    print("macro_recorder module loaded OK")

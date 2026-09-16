@@ -1,8 +1,8 @@
 """Bale Bot Worker — Bridge between Bale Messenger & Isolated Agent Core.
 
 Listens for incoming messages via Bale Bot API (long-polling) or Bale Web (via CDP),
-reassembles chunked frames via `bale_tunnel`, dispatches commands to `AgentCore`,
-and sends response frames back over Bale.
+reassembles chunked frames via `bale_tunnel`, OR converts natural language requests into
+automations using AI Gateway, dispatches commands to `AgentCore`, and sends responses back.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from typing import Callable
 from agent_core import AgentCore
 import bale_tunnel
 import bale_agent
+from gateway import ai_gateway
 
 log = logging.getLogger("bale_worker")
 BALE_API_BASE = "https://tapi.bale.ai/bot"
@@ -33,18 +34,39 @@ class BaleBotWorker:
         self._last_update_id = 0
 
     def process_incoming_text(self, text: str) -> dict | None:
-        """Process raw text line. Returns response payload dict if command finished."""
+        """Process raw text line (tunnel frame OR natural language AI command)."""
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         out_payload = None
+
         for line in lines:
-            if not line.startswith("BALE-TUN|v1|"):
+            # 1. Tunnel frame processing
+            if line.startswith("BALE-TUN|v1|"):
+                try:
+                    cmd = self.reassembler.feed(line)
+                    if cmd is not None:
+                        out_payload = self.agent.handle_command(cmd)
+                except Exception as exc:
+                    out_payload = {"ok": False, "error": f"Tunnel decode error: {exc}"}
                 continue
+
+            # 2. Plain text / Natural language AI command
+            log.info(f"🤖 Bale Bot received natural language prompt: '{line}'")
             try:
-                cmd = self.reassembler.feed(line)
-                if cmd is not None:
-                    out_payload = self.agent.handle_command(cmd)
+                # Use AI Gateway to synthesize recipe from prompt
+                synth = ai_gateway.synthesize(line)
+                steps = synth.get("steps", [])
+                if not steps:
+                    out_payload = {"ok": False, "error": "AI could not generate steps for this prompt."}
+                    continue
+
+                cmd_payload = {"cmd": "run", "steps": steps}
+                out_payload = self.agent.handle_command(cmd_payload)
+                out_payload["ai_synthesized"] = True
+                out_payload["steps_count"] = len(steps)
             except Exception as exc:
-                out_payload = {"ok": False, "error": f"Tunnel decode error: {exc}"}
+                log.error(f"AI synthesis error in bot worker: {exc}")
+                out_payload = {"ok": False, "error": f"AI Processing Error: {exc}"}
+
         return out_payload
 
     # ── Bale Bot API (HTTP Long Polling) ──
@@ -123,9 +145,15 @@ class BaleBotWorker:
             try:
                 if mode == "bot_api":
                     for chat_id, res in self.poll_bot_api():
-                        frames = bale_tunnel.encode(res, key=self.key)
-                        for frame in frames:
-                            self.send_bot_message(chat_id, frame)
+                        # If simple text response for natural language bot chat
+                        if res.get("ai_synthesized"):
+                            reply_text = f"🤖 اتوماسیون با موفقیت اجرا شد:\n" + json.dumps(res.get("results", []), ensure_ascii=False, indent=2)[:3500]
+                            self.send_bot_message(chat_id, reply_text)
+                        else:
+                            # Frame tunnel response
+                            frames = bale_tunnel.encode(res, key=self.key)
+                            for frame in frames:
+                                self.send_bot_message(chat_id, frame)
                 elif mode == "cdp" and cdp:
                     self.poll_once_cdp(cdp)
                 time.sleep(self.poll_interval)
