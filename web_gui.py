@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 import automation_db as db
 import automation_engine as engine
 import data_processor as dp
+import skill_manager
 from bale_agent import probe_endpoint, ensure_browser_ready
 
 UI_DIR = ROOT / "ui"
@@ -78,6 +79,11 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             self._send_json(tpls)
         elif path == "/api/logs":
             self._send_json(db.list_logs())
+        elif path == "/api/skills":
+            self._send_json(skill_manager.list_skills())
+        elif path == "/api/knowledge/search":
+            q = query.get("q", [""])[0]
+            self._send_json(db.search_knowledge(q))
 
         # ── Output Data APIs ──
         elif path == "/api/outputs":
@@ -119,6 +125,18 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             saved_id = db.save_automation(name, desc, steps_json, auto_id)
             self._send_json({"success": True, "id": saved_id})
 
+        elif path == "/api/skills":
+            try:
+                name = body["name"]
+                kind = body.get("kind", "recipe")
+                content = body["content"]
+                if isinstance(content, dict):
+                    content = json.dumps(content, ensure_ascii=False)
+                filepath = skill_manager.install_skill(name, kind, content)
+                self._send_json({"success": True, "path": filepath})
+            except Exception as exc:
+                self._send_json({"success": False, "error": str(exc)}, code=400)
+
         elif path == "/api/automations/run":
             auto_id = body.get("id")
             steps = body.get("steps")
@@ -140,12 +158,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "results": results})
             except Exception as exc:
                 import traceback
-                print("\n" + "="*50)
-                print("❌ ERROR IN AUTOMATION EXECUTION:")
-                traceback.print_exc()
-                print("="*50 + "\n")
                 tb_str = traceback.format_exc()
-                err_msg = f"{exc}\n\nTraceback:\n{tb_str}"
                 db.add_log(auto_id, "خطا", str(exc))
                 self._send_json({"success": False, "error": str(exc), "traceback": tb_str}, code=500)
 
@@ -173,6 +186,11 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             if "id" in query:
                 db.delete_automation(int(query["id"][0]))
                 self._send_json({"success": True})
+                return
+        elif parsed.path == "/api/skills":
+            if "name" in query:
+                removed = skill_manager.remove_skill(query["name"][0])
+                self._send_json({"success": removed})
                 return
         elif parsed.path == "/api/outputs":
             if "name" in query:

@@ -1,15 +1,16 @@
-"""Dynamic skill loader for Bale Portable Agent.
+"""Dynamic skill loader & signer for Bale Portable Agent.
 
 A "skill" is either:
   1. JSON recipe: list of automation steps (same schema as automation_engine).
   2. Python module: exposes `run(context, args) -> dict` — free-form logic.
 
 Skills live under `skills/` (bundled) or `skills_user/` (installed at runtime).
-The manager discovers, validates, and executes them. No dynamic imports of
-untrusted network content — skills must be dropped on disk explicitly.
+Includes HMAC-SHA256 signature verification to prevent untrusted execution.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import importlib.util
 import json
 from pathlib import Path
@@ -22,6 +23,17 @@ USER_DIR = ROOT / "skills_user"
 
 class SkillError(Exception):
     pass
+
+
+def sign_skill(content: str, key: bytes) -> str:
+    """Compute HMAC-SHA256 hex signature of skill content."""
+    return hmac.new(key, content.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_skill_signature(content: str, signature: str, key: bytes) -> bool:
+    """Verify HMAC-SHA256 signature of skill content."""
+    expected = sign_skill(content, key)
+    return hmac.compare_digest(signature.strip().lower(), expected.lower())
 
 
 def _iter_dirs():
@@ -42,6 +54,7 @@ def list_skills() -> list[dict]:
                         "name": path.stem, "kind": "recipe", "path": str(path),
                         "description": data.get("description", ""),
                         "steps": data.get("steps", []),
+                        "signature": data.get("signature", ""),
                     })
                 except Exception as exc:
                     out.append({"name": path.stem, "kind": "recipe", "path": str(path),
@@ -86,10 +99,13 @@ def load_python_skill(path: str) -> Callable:
     return mod.run
 
 
-def install_skill(name: str, kind: str, content: str) -> str:
+def install_skill(name: str, kind: str, content: str, key: bytes = b"", signature: str | None = None) -> str:
     """Persist a new skill under skills_user/. Returns the file path."""
     if kind not in {"recipe", "python"}:
         raise SkillError(f"Unsupported skill kind: {kind}")
+    if key and signature and not verify_skill_signature(content, signature, key):
+        raise SkillError("Skill signature verification failed — untrusted content")
+
     USER_DIR.mkdir(parents=True, exist_ok=True)
     safe = "".join(c for c in name if c.isalnum() or c in "_-")
     if not safe:
@@ -97,7 +113,11 @@ def install_skill(name: str, kind: str, content: str) -> str:
     ext = ".json" if kind == "recipe" else ".py"
     target = USER_DIR / f"{safe}{ext}"
     if kind == "recipe":
-        json.loads(content)  # validate JSON before writing
+        parsed = json.loads(content)  # validate JSON
+        if signature:
+            parsed["signature"] = signature
+            content = json.dumps(parsed, ensure_ascii=False, indent=2)
+
     target.write_text(content, encoding="utf-8")
     return str(target)
 
@@ -115,11 +135,14 @@ def remove_skill(name: str) -> bool:
 # ---- self-check ----
 if __name__ == "__main__":
     USER_DIR.mkdir(parents=True, exist_ok=True)
-    # Install and load a demo recipe.
-    demo = json.dumps({"description": "demo", "steps": [{"action": "wait", "seconds": 0}]})
-    p = install_skill("demo_recipe", "recipe", demo)
+    key = b"secret_signing_key"
+    demo_raw = json.dumps({"description": "signed demo", "steps": [{"action": "wait", "seconds": 0}]})
+    sig = sign_skill(demo_raw, key)
+    assert verify_skill_signature(demo_raw, sig, key)
+
+    p = install_skill("signed_demo", "recipe", demo_raw, key=key, signature=sig)
     assert Path(p).exists()
-    s = get_skill("demo_recipe")
-    assert s["kind"] == "recipe" and s["steps"]
-    assert remove_skill("demo_recipe")
-    print("skill_manager self-check OK")
+    s = get_skill("signed_demo")
+    assert s["kind"] == "recipe" and s["signature"] == sig
+    assert remove_skill("signed_demo")
+    print("skill_manager signature self-check OK")

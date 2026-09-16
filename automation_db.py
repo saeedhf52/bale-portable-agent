@@ -1,4 +1,4 @@
-"""SQLite database manager for Bale Portable Agent automations."""
+"""SQLite database manager for Bale Portable Agent automations & RAG Memory."""
 from __future__ import annotations
 
 import json
@@ -42,13 +42,13 @@ def init_db():
                 value TEXT NOT NULL
             );
 
-            -- RAG & Memory extension
             CREATE TABLE IF NOT EXISTS skills (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 kind TEXT NOT NULL, -- 'recipe' or 'python'
                 description TEXT,
                 content TEXT NOT NULL,
+                signature TEXT,
                 installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -60,6 +60,35 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+
+        # Attempt to create FTS5 table for full-text search / RAG
+        try:
+            conn.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+                    source,
+                    content,
+                    tags,
+                    content='knowledge',
+                    content_rowid='id'
+                );
+
+                -- Triggers to keep FTS index synced
+                CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
+                    INSERT INTO knowledge_fts(rowid, source, content, tags) VALUES (new.id, new.source, new.content, new.tags);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
+                    INSERT INTO knowledge_fts(knowledge_fts, rowid, source, content, tags) VALUES('delete', old.id, old.source, old.content, old.tags);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
+                    INSERT INTO knowledge_fts(knowledge_fts, rowid, source, content, tags) VALUES('delete', old.id, old.source, old.content, old.tags);
+                    INSERT INTO knowledge_fts(rowid, source, content, tags) VALUES (new.id, new.source, new.content, new.tags);
+                END;
+            """)
+        except sqlite3.OperationalError:
+            pass  # FTS5 not available in this sqlite build; will fallback to LIKE
+
         # Insert default Bale Export automation if none exists
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM automations")
@@ -134,14 +163,36 @@ def add_knowledge(source: str, content: str, tags: str = "") -> int:
 
 
 def search_knowledge(query: str, limit: int = 10) -> list[dict]:
+    """Search knowledge base using FTS5 match with BM25 rank, fallback to LIKE."""
     with get_db() as conn:
+        # Try FTS5 search first
+        try:
+            # Escape FTS5 special chars
+            safe_query = '"' + query.replace('"', '""') + '"*'
+            sql = """
+                SELECT k.*, rank
+                FROM knowledge_fts fts
+                JOIN knowledge k ON fts.rowid = k.id
+                WHERE knowledge_fts MATCH ?
+                ORDER BY rank LIMIT ?
+            """
+            rows = conn.execute(sql, (safe_query, limit)).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+        except sqlite3.OperationalError:
+            pass
+
+        # Fallback to LIKE
         rows = conn.execute(
-            "SELECT * FROM knowledge WHERE content LIKE ? OR tags LIKE ? ORDER BY created_at DESC LIMIT ?",
-            (f"%{query}%", f"%{query}%", limit)
+            "SELECT *, 0 as rank FROM knowledge WHERE content LIKE ? OR tags LIKE ? OR source LIKE ? ORDER BY created_at DESC LIMIT ?",
+            (f"%{query}%", f"%{query}%", f"%{query}%", limit)
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 if __name__ == "__main__":
     init_db()
-    print("Database initialized.")
+    add_knowledge("doc1", "تنظیمات اتصال به پیام‌رسان بله و استخراج مخاطبین", "bale,config")
+    res = search_knowledge("بله")
+    assert len(res) > 0, "FTS5/LIKE search failed"
+    print("automation_db init & search OK")
