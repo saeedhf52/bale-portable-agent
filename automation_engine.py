@@ -6,7 +6,7 @@ import time
 import datetime as dt
 from pathlib import Path
 
-from bale_agent import CDP, endpoint_targets, AgentError, log, ensure_browser_ready
+from bale_agent import CDP, endpoint_targets, AgentError, log, ensure_browser_ready, select_target
 
 ROOT = Path(__file__).resolve().parent
 
@@ -1067,13 +1067,7 @@ def run_automation_steps(steps: list[dict], port: int = 9222) -> list[dict]:
         raise AgentError("مرورگر راه‌اندازی نشد. لطفاً به صورت دستی start-browser.cmd را اجرا کنید.")
 
     targets = endpoint_targets(port)
-    target = None
-    for t in targets:
-        if t.get("type") == "page" and t.get("webSocketDebuggerUrl"):
-            target = t
-            break
-    if not target:
-        raise AgentError("صفحه‌ای در مرورگر یافت نشد. مرورگر را باز کنید.")
+    target = select_target(targets)
 
     cdp = CDP(target["webSocketDebuggerUrl"], timeout=30)
     results = []
