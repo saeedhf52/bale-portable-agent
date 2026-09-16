@@ -521,14 +521,14 @@ def _scrape_table(cdp, step, ctx):
                     if (childT) return childT;
                     const parentGrid = el.closest('.k-grid, .jarviswidget, [id*="grid" i]');
                     if (parentGrid) {{
-                        const gT = parentGrid.querySelector('table[role="treegrid"], table[role="grid"], table');
+                        const gT = parentGrid.querySelector('.k-grid-content table, table[role="treegrid"], table[role="grid"], table');
                         if (gT) return gT;
                     }}
                     return el;
                 }}
             }}
-            // Kendo Grid
-            let t = document.querySelector('.k-grid table[role="treegrid"], .k-grid table[role="grid"], #LetterIndex table');
+            // Kendo Grid — target content table first so rows are present
+            let t = document.querySelector('.k-grid-content table, .k-grid table.k-selectable, .k-grid table[role="treegrid"], .k-grid table[role="grid"], #LetterIndex table');
             if (t) return t;
             // Bootstrap / generic data table
             t = document.querySelector('table.table, table.dataTable, table.display, table[id]');
@@ -547,14 +547,15 @@ def _scrape_table(cdp, step, ctx):
             let hdrRow = table.querySelector('thead tr');
             // Kendo separate header table
             if (!hdrRow) {{
-                const grid = table.closest('.k-grid');
-                if (grid) hdrRow = grid.querySelector('.k-grid-header thead tr');
+                const grid = table.closest('.k-grid, .jarviswidget, [id*="grid" i]');
+                if (grid) hdrRow = grid.querySelector('.k-grid-header thead tr, thead tr');
             }}
             if (!hdrRow) return [];
             const cols = [];
             const cells = hdrRow.querySelectorAll('th');
             cells.forEach((th, i) => {{
-                const vis = includeHidden || (th.style.display !== 'none' && th.offsetParent !== null);
+                const isExplicitHidden = th.style.display === 'none' || th.classList.contains('k-hide');
+                const vis = includeHidden || !isExplicitHidden;
                 cols.push({{
                     index: i,
                     text: th.textContent.trim().replace(/\\s+/g, ' '),
@@ -567,10 +568,24 @@ def _scrape_table(cdp, step, ctx):
 
         // ── Extract rows ──
         function getRows(table, headers) {{
-            const visIdx = (headers && headers.length > 0) ? new Set(headers.filter(h => h.visible).map(h => h.index)) : null;
-            const body = table.querySelector('tbody') || table;
+            let visIdx = (headers && headers.length > 0) ? new Set(headers.filter(h => h.visible).map(h => h.index)) : null;
+            // Fallback: if all headers filtered out as invisible, do not drop all cells
+            if (visIdx && visIdx.size === 0) visIdx = null;
+
+            // If selected table is header table (0 data rows), target content table in parent grid
+            let dataTable = table;
+            if (dataTable.querySelectorAll('td').length === 0) {{
+                const grid = dataTable.closest('.k-grid, .jarviswidget, [id*="grid" i]');
+                if (grid) {{
+                    const contentT = grid.querySelector('.k-grid-content table, table.k-selectable');
+                    if (contentT) dataTable = contentT;
+                }}
+            }}
+
+            const body = dataTable.querySelector('tbody') || dataTable;
             const dataRows = [];
-            body.querySelectorAll('tr').forEach(tr => {{
+            const allTrs = body.querySelectorAll('tr');
+            allTrs.forEach(tr => {{
                 // Skip group/header rows
                 if (tr.classList.contains('k-grouping-row')) return;
                 if (tr.querySelector('th')) return;
@@ -661,6 +676,8 @@ def _scrape_table(cdp, step, ctx):
     result = cdp.evaluate(js)
     if not result or result.get("error"):
         raise AgentError(result.get("error", "خطا در استخراج جدول"))
+
+    log(f"📊 [کنسول] جدول یافت شد: {len(result.get('headers', []))} ستون، {result.get('row_count', 0)} ردیف | صفحه {result.get('pagination', {}).get('current_page', '?')} از {result.get('pagination', {}).get('total_pages', '?')}")
 
     ctx[store] = result
     return {"result": result, "message": f"جدول استخراج شد: {result.get('row_count', 0)} ردیف — صفحه {result.get('pagination', {}).get('current_page', '?')} از {result.get('pagination', {}).get('total_pages', '?')}"}
