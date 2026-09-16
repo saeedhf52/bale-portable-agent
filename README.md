@@ -19,15 +19,15 @@
 |  +-------------------------------------------------+  |       |  +-------------------------------------------------+  |
 |  |           Agent Core Engine (هسته اصلی)         |  |       |  |          Bale AI Gateway (گیت‌وی هوشمند)        |  |
 |  |  - CDP Automation Engine (26+ Actions)          |  |       |  |  - Claude / OpenAI / Ollama LLM Adapters       |  |
-|  |  - Dynamic Skill Engine (اسکیل‌های JSON/Python)   |  |       |  |  - Scenario Generator & Code Synthesizer        |  |
-|  |  - Local RAG Memory (SQLite Knowledge Base)     |  |       |  |  - Vector RAG Knowledge Base                   |  |
+|  |  - Dynamic Skill Engine + HMAC Verification     |  |       |  |  - Scenario Generator & Code Synthesizer        |  |
+|  |  - Local RAG Memory (SQLite FTS5 + BM25)        |  |       |  |  - Vector RAG Knowledge Base                   |  |
 |  |  - MCP Server (Model Context Protocol)          |  |       |  |  - MCP Tool Registry                           |  |
 |  +-----------------------+-------------------------+  |       |  +-----------------------+-------------------------+  |
 |                          |                            |       |                          |                            |
 |                          v                            |       |                          v                            |
 |  +-------------------------------------------------+  |       |  +-------------------------------------------------+  |
-|  |          Bale Worker Bot (ربات محلی)             |  |       |  |          Bale Gateway Bot (ربات گیت‌وی)          |  |
-|  |  - Protocol Serializer (Chunking/Base64/Crypto) |  |       |  |  - Protocol Deserializer & Command Handler         |  |
+|  |       Bale Worker Bot (ربات محلی HTTP/CDP)       |  |       |  |          Bale Gateway Bot (ربات گیت‌وی)          |  |
+|  |  - SHA256-CTR + HMAC-SHA256 Encrypted Tunnel    |  |       |  |  - Protocol Deserializer & Command Handler         |  |
 |  +-----------------------+-------------------------+  |       |  +-----------------------+-------------------------+  |
 +--------------------------|----------------------------+       +--------------------------|----------------------------+
                            |                                                               |
@@ -40,11 +40,13 @@
 ## ✨ ویژگی‌های جدید و کلیدی
 
 1. **🧠 هسته ماژولار ایجنت (`agent_core.py`):** مدیریت چرخه‌حیات ایجنت، اجرای اسکیل‌ها و مدیریت حالت به صورت سرویس/کنسول.
-2. **🔌 سیستم اسکیل‌های داینامیک (`skill_manager.py`):** تعریف و نصب اسکیل‌ها به صورت سناریوی JSON یا ماژول پایتون.
+2. **🔌 سیستم اسکیل‌های امن با امضا (`skill_manager.py`):** تعریف، امضا (HMAC-SHA256) و اعتبارسنجی اسکیل‌های JSON یا پایتون قبل از اجرا.
 3. **🤖 پروتکل MCP اختصاصی (`mcp_adapter.py`):** پیاده‌سازی استاندارد Model Context Protocol جهت اتصال ابزارهای ایجنت به Claude Desktop و Cursor.
-4. **📡 تونل متنی بله (`bale_tunnel.py`):** انتقال داده در شبکه ایزوله از طریق پیام‌های متنی بله با فشرده‌سازی zlib، کدگذاری Base64، تکه‌تکه‌سازی (Chunking) و هش SHA-256.
+4. **🔐 تونل متنی رمزنگاری‌شده بله (`bale_tunnel.py`):** انتقال داده در شبکه ایزوله با فشرده‌سازی zlib، کدگذاری Base64، چنکینگ و **رمزنگاری متقارن SHA256-CTR + HMAC-SHA256**.
 5. **🌐 گیت‌وی هوش مصنوعی اینترنتی (`gateway/ai_gateway.py`):** ساخت خودکار سناریوی اتوماسیون از زبان طبیعی با استفاده از مدل‌های Claude، OpenAI یا Ollama.
-6. **📚 حافظه RAG محلی (`automation_db.py`):** ذخیره متون، مستندات و تجربیات اجرا به صورت محلی جهت رشد و بلوغ مداوم ایجنت.
+6. **📚 حافظه RAG با موتور جستجوی FTS5 (`automation_db.py`):** ذخیره متون و تجربیات به همراه **جستجوی تمام‌متنی SQLite FTS5 و رتبه‌بندی BM25**.
+7. **🤖 ربات شنود دوگانه بله (`bale_bot_worker.py`):** پشتیبانی از **Long-Polling مستقیم API بله (HTTP)** و مرورگر (CDP).
+8. **🌐 رابط REST API اسکیل‌ها (`web_gui.py`):** مسیرهای `/api/skills` و `/api/knowledge/search` برای وب گرافی.
 
 ---
 
@@ -65,14 +67,14 @@ python agent_cli.py install-skill my_skill recipe '{"description":"test","steps"
 # راه اندازی سرور MCP برای Claude Desktop یا Cursor
 python agent_cli.py mcp
 
-# جستجو در حافظه RAG محلی
+# جستجو در حافظه RAG محلی (با FTS5)
 python agent_cli.py ask "ورود به سامانه"
 
-# کدگذاری داده برای ارسال از طریق پیام‌رسان بله
-python agent_cli.py tunnel-encode '{"cmd":"list"}' --key "secret"
+# کدگذاری و رمزنگاری داده برای ارسال از طریق بله
+python agent_cli.py tunnel-encode '{"cmd":"list"}' --key "secret_key"
 
-# بازسازی پیام‌های تکه‌تکه‌شده بله
-python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret"
+# بازسازی و رمزگشایی پیام‌های تکه‌تکه‌شده بله
+python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret_key"
 ```
 
 ---
@@ -80,8 +82,8 @@ python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret"
 ## 🔒 امنیت و شبکه ایزوله
 
 - **اجرا بدون دسترسی ادمین:** بدون نیاز به نصب پایتون، pip یا درایور مرورگر.
-- **ارتباط ایزوله:** در شبکه‌های بدون اینترنت، داده‌ها فشرده و به تکه‌های متنی تبدیل می‌شوند تا روی بستر پیام‌رسان منتقل گردند.
-- **رمزنگاری اختیاری:** امکان ارائه کلید متقارن (`key`) جهت رمزنگاری داده‌ها قبل از تبدیل به فریم‌های متنی.
+- **تأیید اصالت اسکیل‌ها:** جلوگیر از اجرای اسکیل دستکاری‌شده یا غیرمجاز با امضای دیجیتال HMAC-SHA256.
+- **رمزنگاری کامل لایه پیام:** تمام پیام‌های متنی در تونل بله با الگوریتم متقارن SHA256-CTR + HMAC رمزنگاری می‌شوند.
 
 ---
 
@@ -89,10 +91,10 @@ python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret"
 
 ```
 ├── agent_core.py           # هسته اصلی ایجنت و مدیریت چرخه‌حیات
-├── skill_manager.py        # موتور بارگذاری و مدیریت اسکیل‌ها
+├── skill_manager.py        # موتور بارگذاری، اعتبارسنجی امضا و مدیریت اسکیل‌ها
 ├── mcp_adapter.py          # پیاده‌سازی پروتکل MCP over stdio
-├── bale_tunnel.py          # پروتکل تونل‌زنی متنی بله (zlib+Base64+Chunking)
-├── bale_bot_worker.py      # ربات شنود و اجرای دستورات بله
+├── bale_tunnel.py          # پروتکل تونل‌زنی رمزنگاری‌شده (zlib+Base64+Chunking+AE)
+├── bale_bot_worker.py      # ربات شنود دوگانه (Bale Bot API HTTP Long-poll / CDP)
 ├── agent_cli.py            # رابط خط فرمان (CLI) ایجنت
 ├── gateway/
 │   └── ai_gateway.py       # گیت‌وی اتصال به هوش مصنوعی (Claude/OpenAI/Ollama)
@@ -101,9 +103,9 @@ python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret"
 ├── bale_agent.py           # هسته CDP و استخراج بله
 ├── page_adapter.js         # اسکریپت خوانش DOM بله
 ├── automation_engine.py    # موتور اتوماسیون ۲۶+ عملیات
-├── automation_db.py        # دیتابیس SQLite و RAG محلی
+├── automation_db.py        # دیتابیس SQLite، FTS5 RAG و حافظه محلی
 ├── data_processor.py       # فیلتر و تبدیل داده‌ها
-└── web_gui.py              # سرور HTTP و ویزارد تصویری
+└── web_gui.py              # سرور HTTP، REST API اسکیل‌ها و ویزارد تصویری
 ```
 
 ---
@@ -111,4 +113,4 @@ python agent_cli.py tunnel-decode "BALE-TUN|v1|..." --key "secret"
 <a name="english-summary"></a>
 ## English Summary
 
-**Bale Portable AI Agent** is an enterprise-grade offline AI Agent framework supporting Chrome DevTools Protocol (CDP) browser automation, Model Context Protocol (MCP), dynamic Python/JSON skill loading, local RAG context memory, and a text-based communication tunnel over Bale messenger for air-gapped environments.
+**Bale Portable AI Agent** is an enterprise-grade offline AI Agent framework supporting Chrome DevTools Protocol (CDP) browser automation, Model Context Protocol (MCP), dynamic Python/JSON skill loading with HMAC signature verification, SQLite FTS5 RAG context memory, AES/SHA256-CTR authenticated encryption over Bale text tunnel, and direct Bale Bot API long polling.
