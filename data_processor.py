@@ -55,32 +55,52 @@ def delete_output_file(filename: str) -> bool:
     return True
 
 
+def _extract_items(data: dict | list) -> list[dict]:
+    """Helper to dynamically find item list inside any extracted JSON structure."""
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        # Table extraction format
+        if "rows" in data and isinstance(data["rows"], list):
+            return [x for x in data["rows"] if isinstance(x, dict)]
+        # Bale messages format
+        if "messages" in data and isinstance(data["messages"], list):
+            return [x for x in data["messages"] if isinstance(x, dict)]
+        # Scrape list format
+        if "items" in data and isinstance(data["items"], list):
+            return [x for x in data["items"] if isinstance(x, dict)]
+        # Generic dict list search
+        for v in data.values():
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                return v
+    return []
+
+
 def json_to_csv(json_filename: str) -> str:
     """Convert an extracted JSON report file into CSV format."""
     path = (OUTPUT_DIR / json_filename).resolve()
     if not path.is_relative_to(OUTPUT_DIR.resolve()) or not path.is_file():
         raise ValueError("فایل یافت نشد.")
 
-    data = json.loads(path.read_text(encoding="utf-8"))
-    messages = data.get("messages", [])
-    if not messages and isinstance(data, list):
-        messages = data
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    items = _extract_items(raw)
 
-    if not messages:
+    if not items:
         raise ValueError("داده‌ای برای تبدیل در فایل یافت نشد.")
 
     output = io.StringIO()
-    # Flatten fields
-    first = messages[0]
-    headers = list(first.keys()) if isinstance(first, dict) else ["data"]
+    # Collect all unique field headers dynamically
+    headers_set = {}
+    for item in items:
+        for k in item.keys():
+            headers_set[k] = True
+    headers = list(headers_set.keys())
 
     writer = csv.DictWriter(output, fieldnames=headers)
     writer.writeheader()
-    for row in messages:
-        if isinstance(row, dict):
-            # Clean newlines in values for cleaner CSV
-            cleaned = {k: str(v).replace("\n", " ") if v is not None else "" for k, v in row.items()}
-            writer.writerow(cleaned)
+    for row in items:
+        cleaned = {k: str(row.get(k, "")).replace("\n", " ") if row.get(k) is not None else "" for k in headers}
+        writer.writerow(cleaned)
 
     csv_name = path.stem + ".csv"
     csv_path = OUTPUT_DIR / csv_name
@@ -89,42 +109,44 @@ def json_to_csv(json_filename: str) -> str:
 
 
 def filter_data(json_filename: str, query: str = "", direction: str = "", kind: str = "") -> dict:
-    """Filter extracted JSON dataset by search text, direction, or media type."""
+    """Filter extracted JSON dataset dynamically across all types (Tables, Bale, Crawls)."""
     path = (OUTPUT_DIR / json_filename).resolve()
     if not path.is_relative_to(OUTPUT_DIR.resolve()) or not path.is_file():
         raise ValueError("فایل یافت نشد.")
 
-    data = json.loads(path.read_text(encoding="utf-8"))
-    messages = data.get("messages", [])
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    items = _extract_items(raw)
+    is_table = isinstance(raw, dict) and "rows" in raw
 
     filtered = []
-    for msg in messages:
-        # Filter by text search
+    for item in items:
+        # Text search across all dict values
         if query:
-            text = (msg.get("text") or "") + (msg.get("contact") or "") + (msg.get("media_details") or "")
-            if not re.search(re.escape(query), text, re.IGNORECASE):
+            all_str = " ".join(str(v) for v in item.values() if v is not None)
+            if not re.search(re.escape(query), all_str, re.IGNORECASE):
                 continue
-        # Filter by direction
-        if direction and msg.get("direction") != direction:
+        # Filter by direction (if present)
+        if direction and item.get("direction") and item.get("direction") != direction:
             continue
-        # Filter by kind
-        if kind and msg.get("kind") != kind:
+        # Filter by kind (if present)
+        if kind and item.get("kind") and item.get("kind") != kind:
             continue
-        filtered.append(msg)
+        filtered.append(item)
 
-    # Compute statistics
     stats = {
-        "total": len(messages),
+        "total": len(items),
         "filtered_count": len(filtered),
         "incoming_count": sum(1 for m in filtered if m.get("direction") == "incoming"),
         "outgoing_count": sum(1 for m in filtered if m.get("direction") == "outgoing"),
+        "is_table": is_table,
+        "table_headers": raw.get("headers", []) if is_table else [],
         "kinds": {}
     }
     for m in filtered:
         k = m.get("kind", "other")
         stats["kinds"][k] = stats["kinds"].get(k, 0) + 1
 
-    return {"stats": stats, "results": filtered}
+    return {"stats": stats, "results": filtered, "raw": raw}
 
 
 def _human_size(size: int) -> str:

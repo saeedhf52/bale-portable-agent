@@ -375,13 +375,54 @@ document.addEventListener('DOMContentLoaded', () => {
       $('stat-incoming').textContent = data.stats.incoming_count;
       $('stat-outgoing').textContent = data.stats.outgoing_count;
 
-      // Render cards
+      // Render cards / table / json dynamically
       const container = $('viewer-content');
       container.innerHTML = '';
       if (!data.results.length) {
         container.innerHTML = '<p class="empty-state">موردی یافت نشد.</p>';
         return;
       }
+
+      // Check if data represents a Scraped Table dataset
+      if (data.stats.is_table || (data.results.length > 0 && !data.results[0].direction && !data.results[0].text)) {
+        const tableWrapper = document.createElement('div');
+        tableWrapper.style.overflowX = 'auto';
+
+        const headersSet = {};
+        if (data.stats.table_headers && data.stats.table_headers.length) {
+          data.stats.table_headers.forEach(h => { headersSet[h] = true; });
+        }
+        data.results.forEach(row => {
+          Object.keys(row).forEach(k => {
+            if (k !== '_page' && !k.endsWith('_link')) headersSet[k] = true;
+          });
+        });
+        const headers = Object.keys(headersSet);
+
+        let html = '<table class="help-table" style="width:100%;border-collapse:collapse;margin-top:10px">';
+        html += '<thead><tr style="background:var(--bg-tertiary)"><th>#</th><th>صفحه</th>';
+        headers.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
+        html += '</tr></thead><tbody>';
+
+        data.results.forEach((row, i) => {
+          html += `<tr><td>${i + 1}</td><td>${row._page || 1}</td>`;
+          headers.forEach(h => {
+            let val = row[h] !== undefined ? row[h] : '';
+            if (row[h + '_link']) {
+              val = `<a href="${escapeHtml(row[h + '_link'])}" target="_blank" style="color:var(--accent);text-decoration:underline">${escapeHtml(val || 'لینک')}</a>`;
+            } else {
+              val = escapeHtml(String(val));
+            }
+            html += `<td>${val}</td>`;
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        tableWrapper.innerHTML = html;
+        container.appendChild(tableWrapper);
+        return;
+      }
+
       data.results.forEach((msg, i) => {
         const card = document.createElement('div');
         card.className = 'msg-card';
