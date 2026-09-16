@@ -15,10 +15,13 @@ import automation_db as db
 import automation_engine as engine
 import data_processor as dp
 import skill_manager
-from bale_agent import probe_endpoint, ensure_browser_ready
+import admin_auth
+from bale_agent import probe_endpoint, ensure_browser_ready, endpoint_targets, select_target, CDP
+from macro_recorder import MacroRecorder
 
 UI_DIR = ROOT / "ui"
 PORT = 8080
+ACTIVE_RECORDER: MacroRecorder | None = None
 
 
 class AgentRequestHandler(BaseHTTPRequestHandler):
@@ -32,7 +35,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
         self.wfile.write(body)
 
@@ -56,7 +59,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self):
@@ -67,9 +70,17 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/status":
             active = probe_endpoint(9222)
             bot_token = bool(db.get_setting("bot_token"))
-            self._send_json({"browser_active": active, "port": 9222, "bot_configured": bot_token})
+            admin_configured = admin_auth.is_admin_configured()
+            self._send_json({
+                "browser_active": active, "port": 9222,
+                "bot_configured": bot_token, "admin_configured": admin_configured,
+            })
         elif path == "/api/settings":
-            self._send_json(db.list_settings())
+            # Sanitize admin password before returning settings
+            st = db.list_settings()
+            st.pop("admin_password_hash", None)
+            st.pop("admin_password_salt", None)
+            self._send_json(st)
         elif path == "/api/automations":
             if "id" in query:
                 auto = db.get_automation(int(query["id"][0]))
@@ -113,16 +124,61 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             self._send_file(UI_DIR / path.lstrip("/"))
 
     def do_POST(self):
+        global ACTIVE_RECORDER
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         body = json.loads(raw_body) if raw_body else {}
 
-        if path == "/api/settings":
+        # ── Admin Auth Endpoints ──
+        if path == "/api/admin/login":
+            pw = body.get("password", "")
+            if admin_auth.verify_admin_password(pw):
+                token = admin_auth.create_session()
+                self._send_json({"success": True, "token": token})
+            else:
+                self._send_json({"success": False, "error": "رمز عبور اشتباه است."}, code=401)
+            return
+
+        elif path == "/api/admin/password":
+            new_pw = body.get("password", "")
+            if new_pw:
+                admin_auth.set_admin_password(new_pw)
+                self._send_json({"success": True, "message": "رمز عبور مدیریت با موفقیت تغییر کرد."})
+            else:
+                self._send_json({"success": False, "error": "رمز عبور نمی‌تواند خالی باشد."}, code=400)
+            return
+
+        # ── Macro Recorder Endpoints ──
+        elif path == "/api/recorder/start":
+            try:
+                targets = endpoint_targets(9222)
+                target = select_target(targets)
+                cdp = CDP(target["webSocketDebuggerUrl"])
+                ACTIVE_RECORDER = MacroRecorder(cdp)
+                res = ACTIVE_RECORDER.start()
+                self._send_json({"success": True, "message": "رکورد اتوماسیون (ماکرو) فعال شد.", "status": res})
+            except Exception as exc:
+                self._send_json({"success": False, "error": str(exc)}, code=500)
+            return
+
+        elif path == "/api/recorder/stop":
+            if not ACTIVE_RECORDER:
+                self._send_json({"success": False, "error": "رکوردر فعال نیست."}, code=400)
+                return
+            steps = ACTIVE_RECORDER.stop()
+            ACTIVE_RECORDER = None
+            name = body.get("name") or f"recorded_macro_{int(time.time())}"
+            saved_id = db.save_automation(name, "اتوماسیون ضبط‌شده با ماکرو رکوردر", json.dumps(steps, ensure_ascii=False))
+            self._send_json({"success": True, "id": saved_id, "name": name, "steps": steps})
+            return
+
+        elif path == "/api/settings":
             for k, v in body.items():
-                db.set_setting(str(k), str(v))
-            self._send_json({"success": True, "settings": db.list_settings()})
+                if k not in {"admin_password_hash", "admin_password_salt"}:
+                    db.set_setting(str(k), str(v))
+            self._send_json({"success": True})
 
         elif path == "/api/automations":
             auto_id = body.get("id")
