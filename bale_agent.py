@@ -65,12 +65,28 @@ def select_target(targets, target_id=None):
             candidates.append(target)
     if target_id:
         candidates = [t for t in candidates if t.get("id") == target_id]
-    if not candidates:
-        raise AgentError("Open https://web.bale.ai/chat in the agent browser first.")
-    if len(candidates) > 1:
-        ids = ", ".join(t["id"] for t in candidates)
-        raise AgentError(f"Several Bale tabs found. Close duplicates or use --target-id. IDs: {ids}")
-    return candidates[0]
+    if candidates:
+        if len(candidates) > 1:
+            ids = ", ".join(t["id"] for t in candidates)
+            log(f"⚠️ چند تب بله پیدا شد. از اولین تب استفاده می‌شود: {ids}")
+        return candidates[0]
+
+    # No open Bale tab — find any page target and automatically navigate to Bale Web
+    page_targets = [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+    if not page_targets:
+        raise AgentError("هیچ زبانه مرورگری یافت نشد.")
+
+    target = page_targets[0]
+    log("🌐 زبانه بله در مرورگر یافت نشد. هدایت خودکار به https://web.bale.ai/chat ...")
+    try:
+        cdp = CDP(target["webSocketDebuggerUrl"], timeout=10)
+        cdp.call("Page.navigate", {"url": "https://web.bale.ai/chat"})
+        cdp.close()
+        time.sleep(4)
+    except Exception as exc:
+        log(f"⚠️ خطا در هدایت خودکار مرورگر: {exc}")
+
+    return target
 
 
 class CDP:

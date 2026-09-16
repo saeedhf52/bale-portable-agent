@@ -72,7 +72,6 @@ def init_db():
                     content_rowid='id'
                 );
 
-                -- Triggers to keep FTS index synced
                 CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
                     INSERT INTO knowledge_fts(rowid, source, content, tags) VALUES (new.id, new.source, new.content, new.tags);
                 END;
@@ -87,9 +86,8 @@ def init_db():
                 END;
             """)
         except sqlite3.OperationalError:
-            pass  # FTS5 not available in this sqlite build; will fallback to LIKE
+            pass  # FTS5 not available in this sqlite build
 
-        # Insert default Bale Export automation if none exists
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM automations")
         if cursor.fetchone()[0] == 0:
@@ -101,6 +99,26 @@ def init_db():
                 ("استخراج ۱۰ پیام اخیر بله", "استخراج خودکار پیام‌های 10 مخاطب اخیر بله وب", json.dumps(default_steps, ensure_ascii=False))
             )
             conn.commit()
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value)
+        )
+
+
+def list_settings() -> dict[str, str]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT key, value FROM settings").fetchall()
+        return {r["key"]: r["value"] for r in rows}
 
 
 def list_automations():
@@ -163,11 +181,8 @@ def add_knowledge(source: str, content: str, tags: str = "") -> int:
 
 
 def search_knowledge(query: str, limit: int = 10) -> list[dict]:
-    """Search knowledge base using FTS5 match with BM25 rank, fallback to LIKE."""
     with get_db() as conn:
-        # Try FTS5 search first
         try:
-            # Escape FTS5 special chars
             safe_query = '"' + query.replace('"', '""') + '"*'
             sql = """
                 SELECT k.*, rank
@@ -182,7 +197,6 @@ def search_knowledge(query: str, limit: int = 10) -> list[dict]:
         except sqlite3.OperationalError:
             pass
 
-        # Fallback to LIKE
         rows = conn.execute(
             "SELECT *, 0 as rank FROM knowledge WHERE content LIKE ? OR tags LIKE ? OR source LIKE ? ORDER BY created_at DESC LIMIT ?",
             (f"%{query}%", f"%{query}%", f"%{query}%", limit)
@@ -192,7 +206,6 @@ def search_knowledge(query: str, limit: int = 10) -> list[dict]:
 
 if __name__ == "__main__":
     init_db()
-    add_knowledge("doc1", "تنظیمات اتصال به پیام‌رسان بله و استخراج مخاطبین", "bale,config")
-    res = search_knowledge("بله")
-    assert len(res) > 0, "FTS5/LIKE search failed"
-    print("automation_db init & search OK")
+    set_setting("bot_token", "test_token_123")
+    assert get_setting("bot_token") == "test_token_123"
+    print("automation_db settings OK")

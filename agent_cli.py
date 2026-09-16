@@ -1,11 +1,13 @@
 """CLI Runner for Bale Portable AI Agent.
 
 Usage:
+  python agent_cli.py start         # Start master launcher (GUI + Bot + REPL)
   python agent_cli.py list-skills
   python agent_cli.py run-skill <name> [--args '{"key":"val"}']
   python agent_cli.py install-skill <name> <kind> <path_or_json>
   python agent_cli.py mcp           # Run MCP stdio server
   python agent_cli.py ask <prompt>  # Search RAG knowledge
+  python agent_cli.py set-bot-token <token>
   python agent_cli.py tunnel-encode <json_file_or_string>
   python agent_cli.py tunnel-decode <frame1> [<frame2> ...]
 """
@@ -18,12 +20,15 @@ from pathlib import Path
 
 from agent_core import AgentCore
 import bale_tunnel
-import automation_db
+import automation_db as db
 
 
 def main():
     parser = argparse.ArgumentParser(description="Bale Portable AI Agent CLI")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # start
+    sub.add_parser("start", help="Start full master launcher (GUI, Bot, Interactive REPL)")
 
     # list-skills
     sub.add_parser("list-skills", help="List all available skills")
@@ -46,6 +51,10 @@ def main():
     p_ask = sub.add_parser("ask", help="Query local RAG knowledge base")
     p_ask.add_argument("query", help="Search query")
 
+    # set-bot-token
+    p_tok = sub.add_parser("set-bot-token", help="Set Bale Bot API Token")
+    p_tok.add_argument("token", help="Bale Bot Token string")
+
     # tunnel-encode
     p_enc = sub.add_parser("tunnel-encode", help="Encode payload into Bale text frames")
     p_enc.add_argument("data", help="JSON string or path to JSON file")
@@ -57,9 +66,14 @@ def main():
     p_dec.add_argument("--key", default="", help="Optional encryption key")
 
     args = parser.parse_args()
+    db.init_db()
     agent = AgentCore()
 
-    if args.command == "list-skills":
+    if args.command == "start":
+        import agent_launcher
+        agent_launcher.main()
+
+    elif args.command == "list-skills":
         skills = agent.list_skills()
         print(json.dumps(skills, ensure_ascii=False, indent=2))
 
@@ -80,8 +94,12 @@ def main():
         MCPServer(agent).serve()
 
     elif args.command == "ask":
-        res = automation_db.search_knowledge(args.query)
+        res = db.search_knowledge(args.query)
         print(json.dumps(res, ensure_ascii=False, indent=2))
+
+    elif args.command == "set-bot-token":
+        db.set_setting("bot_token", args.token)
+        print(f"✅ Bale Bot Token saved.")
 
     elif args.command == "tunnel-encode":
         data = args.data

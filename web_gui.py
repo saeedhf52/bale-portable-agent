@@ -66,7 +66,10 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             active = probe_endpoint(9222)
-            self._send_json({"browser_active": active, "port": 9222})
+            bot_token = bool(db.get_setting("bot_token"))
+            self._send_json({"browser_active": active, "port": 9222, "bot_configured": bot_token})
+        elif path == "/api/settings":
+            self._send_json(db.list_settings())
         elif path == "/api/automations":
             if "id" in query:
                 auto = db.get_automation(int(query["id"][0]))
@@ -116,7 +119,12 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         body = json.loads(raw_body) if raw_body else {}
 
-        if path == "/api/automations":
+        if path == "/api/settings":
+            for k, v in body.items():
+                db.set_setting(str(k), str(v))
+            self._send_json({"success": True, "settings": db.list_settings()})
+
+        elif path == "/api/automations":
             auto_id = body.get("id")
             name = body.get("name", "اتوماسیون جدید")
             desc = body.get("description", "")
